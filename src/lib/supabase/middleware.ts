@@ -23,6 +23,23 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
+  const pathname = request.nextUrl.pathname;
+
+  const isAuthPage = pathname.startsWith("/auth/login") || pathname.startsWith("/auth/signup");
+  const isPublicPath = pathname.startsWith("/_next") || pathname.startsWith("/favicon");
+
+  if (!user && !isAuthPage && !isPublicPath) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/auth/login";
+    return NextResponse.redirect(url);
+  }
+
+  if (user && isAuthPage) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/";
+    return NextResponse.redirect(url);
+  }
+
   return supabaseResponse;
 }
