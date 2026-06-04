@@ -1,0 +1,46 @@
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import { ThemeProvider } from "@/components/theme-provider";
+import { Toaster } from "react-hot-toast";
+import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "Resh POS — Perfume Business Management",
+  description: "All-in-one management system for Resh Perfumes",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+    >
+      <body className="min-h-dvh bg-background font-sans">
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          {children}
+          <Toaster position="top-right" />
+        </ThemeProvider>
+      </body>
+    </html>
+  );
+}
