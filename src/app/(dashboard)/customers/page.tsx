@@ -14,43 +14,53 @@ import {
   DialogFooter, DialogClose,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { Separator } from "@/components/ui/separator";
+import { formatCurrency, formatDateFull } from "@/lib/utils";
+import { getMembershipTier, MEMBERSHIP_TIERS } from "@/lib/types";
+import { can } from "@/lib/helpers";
+import { useProfile } from "@/lib/profile-context";
+import type { Customer } from "@/lib/types";
 import { Plus, Pencil, Search, Gift } from "lucide-react";
 import toast from "react-hot-toast";
 
-type Customer = {
-  id: string;
-  name: string;
-  email: string | null;
-  phone: string | null;
-  barcode_id: string | null;
-  loyalty_points: number;
-  total_spent: number;
-  created_at: string;
-};
-
 export default function CustomersPage() {
+  const { profile } = useProfile();
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [sales, setSales] = useState<{ id: string; customer_id: string; total: number; paid_amount: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [showDialog, setShowDialog] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
+  const [saving, setSaving] = useState(false);
   const supabase = createClient();
 
+  // Details modal
+  const [showDetails, setShowDetails] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [customerSales, setCustomerSales] = useState<{ id: string; invoice_no: string; total: number; payment_status: string; created_at: string; sale_items?: { id: string }[] }[]>([]);
+  const [customerLoyalty, setCustomerLoyalty] = useState<{ id: string; type: string; points: number; description: string; created_at: string }[]>([]);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+
   const [form, setForm] = useState({ name: "", email: "", phone: "", barcode_id: "" });
+  // Loyalty adjustment
+  const [showLoyalty, setShowLoyalty] = useState(false);
+  const [loyaltyPoints, setLoyaltyPoints] = useState("0");
+  const [loyaltySaving, setLoyaltySaving] = useState(false);
 
-  useEffect(() => {
-    loadCustomers();
-  }, []);
-
-  const loadCustomers = async () => {
-    const { data } = await supabase
-      .from("customers")
-      .select("*")
-      .order("created_at", { ascending: false });
-    if (data) setCustomers(data);
+  const fetchData = async () => {
+    const [c, s] = await Promise.all([
+      supabase.from("customers").select("*").order("created_at", { ascending: false }),
+      supabase.from("sales").select("id, customer_id, total, paid_amount").neq("payment_status", "Paid"),
+    ]);
+    if (c.data) setCustomers(c.data);
+    if (s.data) setSales(s.data);
     setLoading(false);
   };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchData();
+  }, []);
 
   const resetForm = () => {
     setForm({ name: "", email: "", phone: "", barcode_id: "" });
@@ -66,30 +76,87 @@ export default function CustomersPage() {
   const handleSave = async () => {
     if (!form.name) { toast.error("Name is required"); return; }
 
+    // Check duplicate email/phone
+    if (form.email) {
+      const { data: dup } = await supabase.from("customers").select("id").eq("email", form.email).neq("id", editing?.id || "").limit(1);
+      if (dup && dup.length > 0) { toast.error("Email already in use"); return; }
+    }
+    if (form.phone) {
+      const { data: dup } = await supabase.from("customers").select("id").eq("phone", form.phone).neq("id", editing?.id || "").limit(1);
+      if (dup && dup.length > 0) { toast.error("Phone already in use"); return; }
+    }
+
+    setSaving(true);
+    const data = { name: form.name, email: form.email || null, phone: form.phone || null, barcode_id: form.barcode_id || null };
+
     if (editing) {
-      const { error } = await supabase
-        .from("customers")
-        .update({ name: form.name, email: form.email, phone: form.phone, barcode_id: form.barcode_id })
-        .eq("id", editing.id);
-      if (error) { toast.error("Failed to update"); return; }
+      const { error } = await supabase.from("customers").update(data).eq("id", editing.id);
+      if (error) { toast.error("Failed to update"); setSaving(false); return; }
       toast.success("Customer updated");
     } else {
-      const { error } = await supabase
-        .from("customers")
-        .insert({ name: form.name, email: form.email, phone: form.phone, barcode_id: form.barcode_id });
-      if (error) { toast.error("Failed to create"); return; }
+      const { error } = await supabase.from("customers").insert(data);
+      if (error) { toast.error("Failed to create"); setSaving(false); return; }
       toast.success("Customer created");
     }
 
     setShowDialog(false);
     resetForm();
-    loadCustomers();
+    fetchData();
+    setSaving(false);
+  };
+
+  const openDetails = async (c: Customer) => {
+    setSelectedCustomer(c);
+    setDetailsLoading(true);
+    setShowDetails(true);
+
+    const [salesRes, loyaltyRes] = await Promise.all([
+      supabase.from("sales").select("*, sale_items(id)").eq("customer_id", c.id).order("created_at", { ascending: false }).limit(20),
+      supabase.from("loyalty_transactions").select("*").eq("customer_id", c.id).order("created_at", { ascending: false }).limit(20),
+    ]);
+    if (salesRes.data) setCustomerSales(salesRes.data);
+    if (loyaltyRes.data) setCustomerLoyalty(loyaltyRes.data);
+    setDetailsLoading(false);
+  };
+
+  const handleLoyaltyAdjust = async () => {
+    if (!selectedCustomer) return;
+    const points = parseInt(loyaltyPoints);
+    if (isNaN(points) || points === 0) { toast.error("Enter valid points"); return; }
+    setLoyaltySaving(true);
+
+    const { error } = await supabase
+      .from("customers")
+      .update({ loyalty_points: (selectedCustomer.loyalty_points || 0) + points })
+      .eq("id", selectedCustomer.id);
+
+    if (error) { toast.error("Failed to adjust loyalty"); setLoyaltySaving(false); return; }
+
+    await supabase.from("loyalty_transactions").insert({
+      customer_id: selectedCustomer.id,
+      points,
+      type: points > 0 ? "earn" : "burn",
+      description: points > 0 ? "Manual adjustment (add)" : "Manual adjustment (deduct)",
+    });
+
+    toast.success(`Loyalty points ${points > 0 ? "added" : "deducted"}`);
+    setShowLoyalty(false);
+    setLoyaltySaving(false);
+    fetchData();
+    if (selectedCustomer) openDetails(selectedCustomer);
+  };
+
+  const getDueAmount = (customerId: string) => {
+    return sales
+      .filter((s) => s.customer_id === customerId)
+      .reduce((sum, s) => sum + Number(s.total || 0) - Number(s.paid_amount || 0), 0);
   };
 
   const filtered = customers.filter((c) =>
     c.name.toLowerCase().includes(search.toLowerCase()) ||
     c.email?.toLowerCase().includes(search.toLowerCase()) ||
-    c.phone?.includes(search)
+    c.phone?.includes(search) ||
+    c.barcode_id?.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -106,7 +173,7 @@ export default function CustomersPage() {
 
       <div className="flex items-center gap-2 max-w-sm">
         <Search className="h-4 w-4 text-muted-foreground" />
-        <Input placeholder="Search by name, email or phone..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        <Input placeholder="Search by name, email, phone or barcode..." value={search} onChange={(e) => setSearch(e.target.value)} />
       </div>
 
       <Card>
@@ -116,45 +183,63 @@ export default function CustomersPage() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Contact</TableHead>
+                <TableHead>Membership</TableHead>
                 <TableHead>Loyalty Points</TableHead>
                 <TableHead>Total Spent</TableHead>
-                <TableHead>Joined</TableHead>
-                <TableHead className="w-16"></TableHead>
+                <TableHead>Due</TableHead>
+                <TableHead className="w-20"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
               ) : filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No customers found.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No customers found.</TableCell></TableRow>
               ) : (
-                filtered.map((c) => (
-                  <TableRow key={c.id}>
-                    <TableCell className="font-medium">{c.name}</TableCell>
-                    <TableCell>
-                      <div className="text-sm">{c.email || "-"}</div>
-                      <div className="text-xs text-muted-foreground">{c.phone || "-"}</div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="gold" className="gap-1">
-                        <Gift className="h-3 w-3" /> {c.loyalty_points}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{formatCurrency(c.total_spent)}</TableCell>
-                    <TableCell className="text-muted-foreground text-xs">{formatDate(c.created_at)}</TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(c)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))
+                filtered.map((c) => {
+                  const due = getDueAmount(c.id);
+                  return (
+                    <TableRow key={c.id} className="cursor-pointer" onClick={() => openDetails(c)}>
+                      <TableCell className="font-medium">{c.name}</TableCell>
+                      <TableCell>
+                        <div className="text-sm">{c.email || "-"}</div>
+                        <div className="text-xs text-muted-foreground">{c.phone || "-"}</div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={
+                          getMembershipTier(c.total_spent) === "VIP" ? "gold" :
+                          getMembershipTier(c.total_spent) === "Gold" ? "gold" :
+                          getMembershipTier(c.total_spent) === "Silver" ? "secondary" : "outline"
+                        }>
+                          {getMembershipTier(c.total_spent)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="gold" className="gap-1">
+                          <Gift className="h-3 w-3" /> {c.loyalty_points}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{formatCurrency(c.total_spent)}</TableCell>
+                      <TableCell>
+                        {due > 0 ? <span className="text-destructive font-medium">{formatCurrency(due)}</span> : "-"}
+                      </TableCell>
+                      <TableCell>
+                        {can(profile?.role, "edit") && (
+                          <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); openEdit(c); }}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
 
+      {/* Customer Dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -183,7 +268,153 @@ export default function CustomersPage() {
           </div>
           <DialogFooter>
             <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-            <Button variant="gold" onClick={handleSave}>{editing ? "Update" : "Create"}</Button>
+            <Button variant="gold" onClick={handleSave} disabled={saving}>{saving ? "Saving..." : editing ? "Update" : "Create"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Customer Details Modal */}
+      <Dialog open={showDetails} onOpenChange={setShowDetails}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{selectedCustomer?.name}</DialogTitle>
+            <DialogDescription>
+              {selectedCustomer?.email || "No email"} &middot; {selectedCustomer?.phone || "No phone"}
+              &middot; <Badge variant="gold" className="gap-1"><Gift className="h-3 w-3" /> {selectedCustomer?.loyalty_points || 0} pts</Badge>
+              &middot; Total spent: {formatCurrency(selectedCustomer?.total_spent || 0)}
+              &middot; {selectedCustomer && <Badge variant="outline">{getMembershipTier(selectedCustomer.total_spent)}</Badge>}
+            </DialogDescription>
+          </DialogHeader>
+
+          {detailsLoading ? (
+            <div className="py-8 text-center text-muted-foreground">Loading...</div>
+          ) : (
+            <div className="grid gap-4">
+              <div className="flex gap-2">
+                {can(profile?.role, "edit") && (
+                  <Button variant="outline" size="sm" onClick={() => { setLoyaltyPoints("0"); setShowLoyalty(true); }}>
+                    <Gift className="h-4 w-4 mr-1" /> Adjust Loyalty
+                  </Button>
+                )}
+              </div>
+
+              {/* Membership Progress */}
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-sm">Membership Progress</CardTitle></CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {MEMBERSHIP_TIERS.map((tier, idx) => {
+                      const isUnlocked = (selectedCustomer?.total_spent || 0) >= tier.minSpent;
+                      const nextTier = MEMBERSHIP_TIERS[idx + 1];
+                      const progress = nextTier
+                        ? Math.min(100, ((selectedCustomer?.total_spent || 0) - tier.minSpent) / (nextTier.minSpent - tier.minSpent) * 100)
+                        : 100;
+                      return (
+                        <div key={tier.name} className="flex items-center gap-3 text-sm">
+                          <Badge variant={isUnlocked ? "gold" : "outline"} className="w-16">{tier.name}</Badge>
+                          <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full ${isUnlocked ? "bg-gold" : "bg-muted-foreground/20"}`}
+                              style={{ width: `${Math.max(0, Math.min(100, progress))}%` }} />
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {nextTier ? `৳${(nextTier.minSpent - (selectedCustomer?.total_spent || 0)).toLocaleString()} to ${nextTier.name}` : "Max tier"}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Separator />
+              <CardTitle className="text-sm">Purchase History</CardTitle>
+              {customerSales.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No purchases yet.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Invoice</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Items</TableHead>
+                      <TableHead>Total</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {customerSales.map((sale: { id: string; invoice_no: string; total: number; payment_status: string; created_at: string; sale_items?: { id: string }[] }) => (
+                      <TableRow key={sale.id}>
+                        <TableCell className="font-mono text-xs">{sale.invoice_no}</TableCell>
+                        <TableCell className="text-xs">{formatDateFull(sale.created_at)}</TableCell>
+                        <TableCell>{sale.sale_items?.length || "-"}</TableCell>
+                        <TableCell className="font-semibold">{formatCurrency(sale.total)}</TableCell>
+                        <TableCell>
+                          <Badge variant={sale.payment_status === "Paid" ? "success" : sale.payment_status === "Partial" ? "warning" : "destructive"}>
+                            {sale.payment_status}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+
+              <Separator />
+              <CardTitle className="text-sm">Loyalty History</CardTitle>
+              {customerLoyalty.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No loyalty transactions.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Points</TableHead>
+                      <TableHead>Description</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {customerLoyalty.map((tx: { id: string; type: string; points: number; description: string; created_at: string }) => (
+                      <TableRow key={tx.id}>
+                        <TableCell className="text-xs">{formatDateFull(tx.created_at)}</TableCell>
+                        <TableCell>
+                          <Badge variant={tx.type === "earn" ? "success" : "destructive"}>
+                            {tx.type}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className={tx.points > 0 ? "text-green-600 font-medium" : "text-destructive font-medium"}>
+                          {tx.points > 0 ? "+" : ""}{tx.points}
+                        </TableCell>
+                        <TableCell className="text-xs">{tx.description || "-"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">Close</Button></DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Loyalty Adjustment Dialog */}
+      <Dialog open={showLoyalty} onOpenChange={setShowLoyalty}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Adjust Loyalty Points</DialogTitle>
+            <DialogDescription>{selectedCustomer?.name} — Current: {selectedCustomer?.loyalty_points || 0} pts</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-4">
+            <Label>Points (positive to add, negative to deduct)</Label>
+            <Input type="number" value={loyaltyPoints} onChange={(e) => setLoyaltyPoints(e.target.value)} />
+          </div>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+            <Button variant="gold" onClick={handleLoyaltyAdjust} disabled={loyaltySaving}>
+              {loyaltySaving ? "Saving..." : "Save"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

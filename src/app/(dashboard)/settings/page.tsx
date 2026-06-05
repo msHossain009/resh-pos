@@ -5,31 +5,96 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { APP_NAME } from "@/lib/constants";
 import { useTheme } from "next-themes";
-import { Moon, Sun, Save } from "lucide-react";
+import { can } from "@/lib/helpers";
+import { useProfile } from "@/lib/profile-context";
+import { Moon, Sun, Save, Download, Loader2 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 import toast from "react-hot-toast";
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
+  const { profile } = useProfile();
   const [mounted, setMounted] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const supabase = createClient();
   const [business, setBusiness] = useState({
-    name: APP_NAME,
+    business_name: APP_NAME,
     tagline: "SCENT YOUR WAY TO UNFORGETTABLE",
-    taxRate: "5",
+    tax_rate: "5",
     currency: "BDT",
-    receiptFooter: "Thank you for choosing Resh Perfumes!",
+    receipt_footer: "Thank you for choosing Resh Perfumes!",
   });
 
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("business_settings")
+          .select("*")
+          .limit(1)
+          .single();
+        if (data && !error) {
+          setBusiness({
+            business_name: data.business_name || APP_NAME,
+            tagline: data.tagline || "SCENT YOUR WAY TO UNFORGETTABLE",
+            tax_rate: String(data.tax_rate || 5),
+            currency: data.currency || "BDT",
+            receipt_footer: data.receipt_footer || "Thank you for choosing Resh Perfumes!",
+          });
+        }
+      } catch {
+        // Use defaults if loading fails
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
 
-  const handleSave = () => {
-    localStorage.setItem("resh-pos-settings", JSON.stringify(business));
-    toast.success("Settings saved");
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from("business_settings")
+        .update({
+          business_name: business.business_name,
+          tagline: business.tagline,
+          currency: business.currency,
+          tax_rate: parseFloat(business.tax_rate) || 5,
+          receipt_footer: business.receipt_footer,
+        })
+        .eq("id", (await supabase.from("business_settings").select("id").limit(1).single()).data?.id);
+      if (error) throw error;
+      toast.success("Settings saved to database");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to save settings";
+      toast.error(msg);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  if (!mounted) return null;
+  const handleExport = () => {
+    const blob = new Blob([JSON.stringify(business, null, 2)], { type: "application/json" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "resh-pos-settings.json";
+    link.click();
+    URL.revokeObjectURL(link.href);
+    toast.success("Settings exported");
+  };
+
+  if (!mounted || loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin h-8 w-8 border-4 border-gold border-t-transparent rounded-full" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -38,14 +103,13 @@ export default function SettingsPage() {
         <p className="text-sm text-muted-foreground">Configure your business preferences.</p>
       </div>
 
-      {/* Business Info */}
       <Card>
         <CardHeader><CardTitle>Business Information</CardTitle><CardDescription>Details shown on receipts and reports.</CardDescription></CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Business Name</Label>
-              <Input value={business.name} onChange={(e) => setBusiness({ ...business, name: e.target.value })} />
+              <Input value={business.business_name} onChange={(e) => setBusiness({ ...business, business_name: e.target.value })} />
             </div>
             <div className="space-y-2">
               <Label>Currency</Label>
@@ -58,50 +122,48 @@ export default function SettingsPage() {
           </div>
           <div className="space-y-2">
             <Label>Receipt Footer</Label>
-            <Input value={business.receiptFooter} onChange={(e) => setBusiness({ ...business, receiptFooter: e.target.value })} />
+            <Input value={business.receipt_footer} onChange={(e) => setBusiness({ ...business, receipt_footer: e.target.value })} />
           </div>
         </CardContent>
       </Card>
 
-      {/* Tax */}
       <Card>
         <CardHeader><CardTitle>Tax Settings</CardTitle><CardDescription>Default tax rate for sales.</CardDescription></CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Tax Rate (%)</Label>
-              <Input type="number" step="0.1" value={business.taxRate} onChange={(e) => setBusiness({ ...business, taxRate: e.target.value })} />
+              <Input type="number" step="0.1" value={business.tax_rate} onChange={(e) => setBusiness({ ...business, tax_rate: e.target.value })} />
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Theme */}
       <Card>
         <CardHeader><CardTitle>Appearance</CardTitle><CardDescription>Toggle between light and dark mode.</CardDescription></CardHeader>
         <CardContent>
           <div className="flex items-center gap-4">
-            <Button
-              variant={theme === "light" ? "default" : "outline"}
-              onClick={() => setTheme("light")}
-              className="gap-2"
-            >
+            <Button variant={theme === "light" ? "default" : "outline"} onClick={() => setTheme("light")} className="gap-2">
               <Sun className="h-4 w-4" /> Light
             </Button>
-            <Button
-              variant={theme === "dark" ? "default" : "outline"}
-              onClick={() => setTheme("dark")}
-              className="gap-2"
-            >
+            <Button variant={theme === "dark" ? "default" : "outline"} onClick={() => setTheme("dark")} className="gap-2">
               <Moon className="h-4 w-4" /> Dark
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      <Button variant="gold" className="gap-2" onClick={handleSave}>
-        <Save className="h-4 w-4" /> Save Settings
-      </Button>
+      <div className="flex gap-3">
+        {can(profile?.role, "manage_settings") && (
+          <Button variant="gold" className="gap-2" onClick={handleSave} disabled={saving}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Save Settings
+          </Button>
+        )}
+        <Button variant="outline" className="gap-2" onClick={handleExport}>
+          <Download className="h-4 w-4" /> Export
+        </Button>
+      </div>
     </div>
   );
 }

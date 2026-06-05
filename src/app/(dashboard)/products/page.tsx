@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -13,138 +13,253 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
   DialogFooter, DialogClose,
 } from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { Plus, Pencil, Search, Package } from "lucide-react";
+import { can } from "@/lib/helpers";
+import { useProfile } from "@/lib/profile-context";
+import type { Product, Variant } from "@/lib/types";
+import { Plus, Pencil, Search, Trash2, Eye, EyeOff } from "lucide-react";
 import toast from "react-hot-toast";
 
-type Product = {
-  id: string;
-  name: string;
-  description: string | null;
-  category: string | null;
-  image_url: string | null;
-  created_at: string;
-  product_variants: Variant[];
-};
-
-type Variant = {
-  id: string;
-  size_ml: number;
-  concentration: string;
-  price: number;
-  cost: number;
-  sku: string;
-  stock_quantity: number;
-};
+const CONCENTRATIONS = ["EDP", "EDT", "EDC", "Parfum", "Extrait", "Cologne"] as const;
 
 export default function ProductsPage() {
+  const { profile } = useProfile();
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [showDialog, setShowDialog] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
+  const [saving, setSaving] = useState(false);
   const supabase = createClient();
 
   const [form, setForm] = useState({
     name: "",
     description: "",
+    category_id: "",
     category: "",
+    image_url: "",
+    active: true,
+  });
+
+  // Variants state
+  const [variants, setVariants] = useState<Partial<Variant>[]>([]);
+  const [showVariantDialog, setShowVariantDialog] = useState(false);
+  const [editingVariantIdx, setEditingVariantIdx] = useState<number | null>(null);
+  const [variantForm, setVariantForm] = useState({
     size_ml: "50",
     concentration: "EDP",
     price: "",
     cost: "",
     stock_quantity: "0",
+    low_stock_threshold: "10",
+    sku: "",
+    barcode: "",
+    active: true,
   });
 
-  useEffect(() => {
-    loadProducts();
-  }, []);
-
-  const loadProducts = async () => {
-    const { data } = await supabase
-      .from("products")
-      .select("*, product_variants(*)")
-      .order("created_at", { ascending: false });
-    if (data) setProducts(data);
+  const fetchData = async () => {
+    const [p, c] = await Promise.all([
+      supabase.from("products").select("*, product_variants(*)").order("created_at", { ascending: false }),
+      supabase.from("categories").select("id, name").order("name"),
+    ]);
+    if (p.data) setProducts(p.data);
+    if (c.data) setCategories(c.data);
     setLoading(false);
   };
 
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchData();
+  }, []);
+
   const resetForm = () => {
-    setForm({ name: "", description: "", category: "", size_ml: "50", concentration: "EDP", price: "", cost: "", stock_quantity: "0" });
+    setForm({ name: "", description: "", category_id: "", category: "", image_url: "", active: true });
+    setVariants([]);
     setEditing(null);
   };
 
   const openEdit = (product: Product) => {
-    const v = product.product_variants?.[0];
     setEditing(product);
     setForm({
       name: product.name,
       description: product.description || "",
+      category_id: product.category_id || "",
       category: product.category || "",
-      size_ml: v?.size_ml?.toString() || "50",
-      concentration: v?.concentration || "EDP",
-      price: v?.price?.toString() || "",
-      cost: v?.cost?.toString() || "",
-      stock_quantity: v?.stock_quantity?.toString() || "0",
+      image_url: product.image_url || "",
+      active: product.active,
     });
+    setVariants(product.product_variants?.map((v) => ({ ...v })) || []);
     setShowDialog(true);
   };
 
-  const handleSave = async () => {
-    if (!form.name || !form.price) {
-      toast.error("Name and price are required");
-      return;
-    }
+  const resetVariantForm = () => {
+    setVariantForm({
+      size_ml: "50", concentration: "EDP", price: "", cost: "",
+      stock_quantity: "0", low_stock_threshold: "10", sku: "", barcode: "", active: true,
+    });
+    setEditingVariantIdx(null);
+  };
 
-    const variantData = {
-      size_ml: parseInt(form.size_ml),
-      concentration: form.concentration,
-      price: parseFloat(form.price),
-      cost: form.cost ? parseFloat(form.cost) : 0,
-      stock_quantity: parseInt(form.stock_quantity) || 0,
+  const openAddVariant = () => {
+    resetVariantForm();
+    setShowVariantDialog(true);
+  };
+
+  const openEditVariant = (idx: number) => {
+    const v = variants[idx];
+    if (!v) return;
+    setVariantForm({
+      size_ml: String(v.size_ml || 50),
+      concentration: v.concentration || "EDP",
+      price: String(v.price || ""),
+      cost: String(v.cost || ""),
+      stock_quantity: String(v.stock_quantity || 0),
+      low_stock_threshold: String(v.low_stock_threshold || 10),
+      sku: v.sku || "",
+      barcode: v.barcode || "",
+      active: v.active !== false,
+    });
+    setEditingVariantIdx(idx);
+    setShowVariantDialog(true);
+  };
+
+  const saveVariant = () => {
+    if (!variantForm.price) { toast.error("Price is required"); return; }
+    const variant: Partial<Variant> = {
+      size_ml: parseFloat(variantForm.size_ml) || 50,
+      concentration: variantForm.concentration,
+      price: parseFloat(variantForm.price) || 0,
+      cost: parseFloat(variantForm.cost) || 0,
+      stock_quantity: parseInt(variantForm.stock_quantity) || 0,
+      low_stock_threshold: parseInt(variantForm.low_stock_threshold) || 10,
+      sku: variantForm.sku,
+      barcode: variantForm.barcode || null,
+      active: variantForm.active,
+    };
+
+    setVariants((prev) => {
+      if (editingVariantIdx !== null) {
+        const updated = [...prev];
+        updated[editingVariantIdx] = variant;
+        return updated;
+      }
+      return [...prev, variant];
+    });
+    setShowVariantDialog(false);
+    resetVariantForm();
+  };
+
+  const removeVariant = (idx: number) => {
+    const v = variants[idx];
+    if (v?.id && editing) {
+      // Existing variant being removed - mark inactive rather than delete if it has sales
+      setVariants((prev) => prev.map((item, i) => i === idx ? { ...item, active: false } : item));
+      toast.success("Variant marked inactive");
+    } else {
+      setVariants((prev) => prev.filter((_, i) => i !== idx));
+    }
+  };
+
+  const handleSave = async () => {
+    if (!form.name) { toast.error("Product name is required"); return; }
+    if (variants.length === 0) { toast.error("Add at least one variant"); return; }
+    if (!variants.every((v) => v.price && Number(v.price) > 0)) { toast.error("All variants must have a price"); return; }
+
+    setSaving(true);
+
+    const productData = {
+      name: form.name,
+      description: form.description || null,
+      category: form.category || null,
+      category_id: form.category_id || null,
+      image_url: form.image_url || null,
+      active: form.active,
     };
 
     if (editing) {
-      const { error: pe } = await supabase
-        .from("products")
-        .update({ name: form.name, description: form.description, category: form.category })
-        .eq("id", editing.id);
+      const { error: pe } = await supabase.from("products").update(productData).eq("id", editing.id);
+      if (pe) { toast.error("Failed to update product"); setSaving(false); return; }
 
-      if (pe) { toast.error("Failed to update product"); return; }
-
-      const variant = editing.product_variants?.[0];
-      if (variant) {
-        await supabase.from("product_variants").update(variantData).eq("id", variant.id);
+      // Upsert variants
+      for (const v of variants) {
+        const variantData = {
+          product_id: editing.id,
+          size_ml: v.size_ml,
+          concentration: v.concentration,
+          price: v.price,
+          cost: v.cost || 0,
+          stock_quantity: v.stock_quantity || 0,
+          low_stock_threshold: v.low_stock_threshold || 10,
+          sku: v.sku || undefined,
+          barcode: v.barcode || null,
+          active: v.active !== false,
+        };
+        if (v.id) {
+          await supabase.from("product_variants").update(variantData).eq("id", v.id);
+        } else {
+          await supabase.from("product_variants").insert(variantData);
+        }
       }
-
       toast.success("Product updated");
     } else {
       const { data: newProduct, error: pe } = await supabase
         .from("products")
-        .insert({ name: form.name, description: form.description, category: form.category })
+        .insert(productData)
         .select()
         .single();
+      if (pe || !newProduct) { toast.error("Failed to create product"); setSaving(false); return; }
 
-      if (pe || !newProduct) { toast.error("Failed to create product"); return; }
-
-      const { error: ve } = await supabase
-        .from("product_variants")
-        .insert({ ...variantData, product_id: newProduct.id });
-
-      if (ve) { toast.error("Product created but variant failed"); } else {
-        toast.success("Product created");
+      for (const v of variants) {
+        await supabase.from("product_variants").insert({
+          ...v,
+          product_id: newProduct.id,
+          sku: v.sku || undefined,
+          price: v.price,
+          cost: v.cost || 0,
+          stock_quantity: v.stock_quantity || 0,
+          low_stock_threshold: v.low_stock_threshold || 10,
+        });
       }
+      toast.success("Product created");
     }
 
     setShowDialog(false);
     resetForm();
-    loadProducts();
+    fetchData();
+    setSaving(false);
   };
 
-  const filtered = products.filter((p) =>
-    p.name.toLowerCase().includes(search.toLowerCase())
-  );
+  const handleToggleActive = async (product: Product) => {
+    const { error } = await supabase
+      .from("products")
+      .update({ active: !product.active })
+      .eq("id", product.id);
+    if (error) { toast.error("Failed to toggle status"); return; }
+    toast.success(product.active ? "Product deactivated" : "Product activated");
+    fetchData();
+  };
+
+  const filtered = products.filter((p) => {
+    const searchLower = search.toLowerCase();
+    return (
+      p.name.toLowerCase().includes(searchLower) ||
+      p.category?.toLowerCase().includes(searchLower) ||
+      p.product_variants?.some((v) =>
+        v.sku?.toLowerCase().includes(searchLower) ||
+        v.barcode?.toLowerCase().includes(searchLower)
+      )
+    );
+  });
+
+  // Total stock across all variants for a product
+  const totalStock = (product: Product) =>
+    product.product_variants?.reduce((sum, v) => sum + (v.stock_quantity || 0), 0) || 0;
 
   return (
     <div className="space-y-6">
@@ -153,15 +268,17 @@ export default function ProductsPage() {
           <h1 className="text-2xl font-bold tracking-tight">Products</h1>
           <p className="text-sm text-muted-foreground">Manage your perfume catalog.</p>
         </div>
-        <Button variant="gold" onClick={() => { resetForm(); setShowDialog(true); }}>
-          <Plus className="h-4 w-4" /> Add Product
-        </Button>
+        {can(profile?.role, "create") && (
+          <Button variant="gold" onClick={() => { resetForm(); setShowDialog(true); }}>
+            <Plus className="h-4 w-4" /> Add Product
+          </Button>
+        )}
       </div>
 
       <div className="flex items-center gap-2 max-w-sm">
         <Search className="h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Search products..."
+          placeholder="Search by name, SKU, barcode or category..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -174,11 +291,11 @@ export default function ProductsPage() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Category</TableHead>
-                <TableHead>Size / Type</TableHead>
-                <TableHead>Price</TableHead>
-                <TableHead>Stock</TableHead>
+                <TableHead>Variants</TableHead>
+                <TableHead>Total Stock</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead>Created</TableHead>
-                <TableHead className="w-16"></TableHead>
+                <TableHead className="w-24"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -187,36 +304,45 @@ export default function ProductsPage() {
               ) : filtered.length === 0 ? (
                 <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No products found.</TableCell></TableRow>
               ) : (
-                filtered.map((product) => {
-                  const v = product.product_variants?.[0];
-                  return (
-                    <TableRow key={product.id}>
-                      <TableCell className="font-medium">{product.name}</TableCell>
-                      <TableCell>{product.category || "-"}</TableCell>
-                      <TableCell>{v ? `${v.size_ml}ml / ${v.concentration}` : "-"}</TableCell>
-                      <TableCell>{v ? formatCurrency(v.price) : "-"}</TableCell>
-                      <TableCell>
-                        <Badge variant={v && v.stock_quantity < 10 ? "destructive" : "success"}>
-                          {v?.stock_quantity || 0}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground text-xs">{formatDate(product.created_at)}</TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(product)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
+                filtered.map((product) => (
+                  <TableRow key={product.id}>
+                    <TableCell className="font-medium">{product.name}</TableCell>
+                    <TableCell>{product.category || "-"}</TableCell>
+                    <TableCell>{product.product_variants?.length || 0}</TableCell>
+                    <TableCell>
+                      <Badge variant={totalStock(product) < 10 ? "destructive" : "success"}>
+                        {totalStock(product)} ml
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={product.active ? "success" : "secondary"}>
+                        {product.active ? "Active" : "Inactive"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-xs">{formatDate(product.created_at)}</TableCell>
+                    <TableCell>
+                      {can(profile?.role, "edit") && (
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => openEdit(product)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleToggleActive(product)}>
+                            {product.active ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </Button>
+                        </div>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))
               )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
 
+      {/* Product Dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? "Edit Product" : "Add Product"}</DialogTitle>
             <DialogDescription>Fill in the details below.</DialogDescription>
@@ -224,49 +350,158 @@ export default function ProductsPage() {
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Product Name</Label>
+                <Label>Product Name *</Label>
                 <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="E.g. Rose Oud" />
               </div>
               <div className="space-y-2">
                 <Label>Category</Label>
-                <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="E.g. Floral" />
+                <Select value={form.category_id || form.category} onValueChange={(v) => setForm({ ...form, category_id: v, category: v })}>
+                  <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
+                  <SelectContent>
+                    {categories.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                    ))}
+                    <SelectItem value="__custom__">Custom...</SelectItem>
+                  </SelectContent>
+                </Select>
+                {form.category_id === "__custom__" && (
+                  <Input
+                    className="mt-2"
+                    value={form.category}
+                    onChange={(e) => setForm({ ...form, category: e.target.value })}
+                    placeholder="Enter custom category"
+                  />
+                )}
               </div>
             </div>
             <div className="space-y-2">
               <Label>Description</Label>
               <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Top notes, middle notes, base notes..." />
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label>Image URL (optional)</Label>
+              <Input value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} placeholder="https://..." />
+            </div>
+
+            <Separator />
+
+            {/* Variants Section */}
+            <div className="flex items-center justify-between">
+              <Label>Variants</Label>
+              <Button variant="outline" size="sm" onClick={openAddVariant}>
+                <Plus className="h-4 w-4 mr-1" /> Add Variant
+              </Button>
+            </div>
+
+            {variants.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-2">No variants added yet.</p>
+            ) : (
               <div className="space-y-2">
-                <Label>Size (ml)</Label>
-                <Input type="number" value={form.size_ml} onChange={(e) => setForm({ ...form, size_ml: e.target.value })} />
+                {variants.map((v, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-2 rounded border text-sm">
+                    <div className="flex-1">
+                      <span className="font-medium">{v.size_ml}ml</span>
+                      <span className="text-muted-foreground ml-2">/ {v.concentration}</span>
+                      <span className="ml-3">{formatCurrency(v.price || 0)}</span>
+                      {v.sku && <span className="ml-3 font-mono text-xs text-muted-foreground">SKU: {v.sku}</span>}
+                      <Badge variant={v.active !== false ? "success" : "secondary"} className="ml-2">
+                        {v.active !== false ? "Active" : "Inactive"}
+                      </Badge>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => openEditVariant(idx)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => removeVariant(idx)}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+            <Button variant="gold" onClick={handleSave} disabled={saving}>
+              {saving ? "Saving..." : editing ? "Update" : "Create"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Variant Form Dialog */}
+      <Dialog open={showVariantDialog} onOpenChange={setShowVariantDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingVariantIdx !== null ? "Edit Variant" : "Add Variant"}</DialogTitle>
+            <DialogDescription>Configure product variant details.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Size (ml) *</Label>
+                <Input type="number" value={variantForm.size_ml} onChange={(e) => setVariantForm({ ...variantForm, size_ml: e.target.value })} />
               </div>
               <div className="space-y-2">
                 <Label>Concentration</Label>
-                <Input value={form.concentration} onChange={(e) => setForm({ ...form, concentration: e.target.value })} placeholder="EDP, EDT..." />
-              </div>
-              <div className="space-y-2">
-                <Label>Stock Qty</Label>
-                <Input type="number" value={form.stock_quantity} onChange={(e) => setForm({ ...form, stock_quantity: e.target.value })} />
+                <Select value={variantForm.concentration} onValueChange={(v) => setVariantForm({ ...variantForm, concentration: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {CONCENTRATIONS.map((c) => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Price (৳)</Label>
-                <Input type="number" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
+                <Label>Price (৳) *</Label>
+                <Input type="number" step="0.01" value={variantForm.price} onChange={(e) => setVariantForm({ ...variantForm, price: e.target.value })} />
               </div>
               <div className="space-y-2">
                 <Label>Cost (৳)</Label>
-                <Input type="number" step="0.01" value={form.cost} onChange={(e) => setForm({ ...form, cost: e.target.value })} />
+                <Input type="number" step="0.01" value={variantForm.cost} onChange={(e) => setVariantForm({ ...variantForm, cost: e.target.value })} />
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Stock Quantity</Label>
+                <Input type="number" min={0} value={variantForm.stock_quantity} onChange={(e) => setVariantForm({ ...variantForm, stock_quantity: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Low Stock Threshold</Label>
+                <Input type="number" min={0} value={variantForm.low_stock_threshold} onChange={(e) => setVariantForm({ ...variantForm, low_stock_threshold: e.target.value })} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>SKU</Label>
+                <Input value={variantForm.sku} onChange={(e) => setVariantForm({ ...variantForm, sku: e.target.value })} placeholder="Auto if empty" />
+              </div>
+              <div className="space-y-2">
+                <Label>Barcode</Label>
+                <Input value={variantForm.barcode} onChange={(e) => setVariantForm({ ...variantForm, barcode: e.target.value })} />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Label>Active</Label>
+              <select
+                className="border rounded p-1 text-sm"
+                value={variantForm.active ? "true" : "false"}
+                onChange={(e) => setVariantForm({ ...variantForm, active: e.target.value === "true" })}
+              >
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
             </div>
           </div>
           <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
-            </DialogClose>
-            <Button variant="gold" onClick={handleSave}>
-              {editing ? "Update" : "Create"}
+            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+            <Button variant="gold" onClick={saveVariant}>
+              {editingVariantIdx !== null ? "Update" : "Add"}
             </Button>
           </DialogFooter>
         </DialogContent>
