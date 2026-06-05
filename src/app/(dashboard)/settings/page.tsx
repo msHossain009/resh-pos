@@ -7,12 +7,15 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { APP_NAME } from "@/lib/constants";
 import { useTheme } from "next-themes";
+import { can } from "@/lib/helpers";
+import { useProfile } from "@/lib/profile-context";
 import { Moon, Sun, Save, Download, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import toast from "react-hot-toast";
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
+  const { profile } = useProfile();
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -26,32 +29,31 @@ export default function SettingsPage() {
   });
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
-    loadSettings();
-  }, []);
-
-  const loadSettings = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("business_settings")
-        .select("*")
-        .limit(1)
-        .single();
-      if (data && !error) {
-        setBusiness({
-          business_name: data.business_name || APP_NAME,
-          tagline: data.tagline || "SCENT YOUR WAY TO UNFORGETTABLE",
-          tax_rate: String(data.tax_rate || 5),
-          currency: data.currency || "BDT",
-          receipt_footer: data.receipt_footer || "Thank you for choosing Resh Perfumes!",
-        });
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("business_settings")
+          .select("*")
+          .limit(1)
+          .single();
+        if (data && !error) {
+          setBusiness({
+            business_name: data.business_name || APP_NAME,
+            tagline: data.tagline || "SCENT YOUR WAY TO UNFORGETTABLE",
+            tax_rate: String(data.tax_rate || 5),
+            currency: data.currency || "BDT",
+            receipt_footer: data.receipt_footer || "Thank you for choosing Resh Perfumes!",
+          });
+        }
+      } catch {
+        // Use defaults if loading fails
+      } finally {
+        setLoading(false);
       }
-    } catch {
-      // Use defaults if loading fails
-    } finally {
-      setLoading(false);
-    }
-  };
+    })();
+  }, []);
 
   const handleSave = async () => {
     setSaving(true);
@@ -152,10 +154,12 @@ export default function SettingsPage() {
       </Card>
 
       <div className="flex gap-3">
-        <Button variant="gold" className="gap-2" onClick={handleSave} disabled={saving}>
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          Save Settings
-        </Button>
+        {can(profile?.role, "manage_settings") && (
+          <Button variant="gold" className="gap-2" onClick={handleSave} disabled={saving}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Save Settings
+          </Button>
+        )}
         <Button variant="outline" className="gap-2" onClick={handleExport}>
           <Download className="h-4 w-4" /> Export
         </Button>

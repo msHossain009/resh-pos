@@ -28,3 +28,21 @@ export async function getCurrentUserId(): Promise<string | null> {
   const { data: { user } } = await supabase.auth.getUser();
   return user?.id ?? null;
 }
+
+/** Check if a role has permission for an action */
+export function can(role: string | undefined, action: "create" | "edit" | "delete" | "view_reports" | "manage_settings"): boolean {
+  switch (action) {
+    case "create":
+      return role === "admin" || role === "manager" || role === "cashier";
+    case "edit":
+      return role === "admin" || role === "manager";
+    case "delete":
+      return role === "admin";
+    case "view_reports":
+      return role === "admin" || role === "manager";
+    case "manage_settings":
+      return role === "admin";
+    default:
+      return false;
+  }
+}

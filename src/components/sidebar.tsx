@@ -15,9 +15,9 @@ import {
   Settings,
   Menu,
   X,
+  Receipt,
 } from "lucide-react";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 
 const navItems = [
   { href: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -26,6 +26,7 @@ const navItems = [
   { href: "/sales", icon: ShoppingCart, label: "Sales" },
   { href: "/customers", icon: Users, label: "Customers" },
   { href: "/suppliers", icon: Truck, label: "Suppliers" },
+  { href: "/expenses", icon: Receipt, label: "Expenses" },
   { href: "/reports", icon: BarChart3, label: "Reports" },
   { href: "/settings", icon: Settings, label: "Settings" },
 ];
