@@ -2,6 +2,8 @@ import { Sidebar } from "@/components/sidebar";
 import { TopBar } from "@/components/topbar";
 import { ProfileProvider } from "@/lib/profile-context";
 
+export const dynamic = "force-dynamic";
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <ProfileProvider>
