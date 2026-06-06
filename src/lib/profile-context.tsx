@@ -29,7 +29,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       }
       setLoading(false);
     })();
-  }, []);
+  }, [supabase]);
 
   return (
     <ProfileContext.Provider value={{ profile, loading }}>

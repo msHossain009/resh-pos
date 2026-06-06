@@ -16,7 +16,6 @@ import toast from "react-hot-toast";
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const { profile } = useProfile();
-  const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const supabase = createClient();
@@ -26,11 +25,11 @@ export default function SettingsPage() {
     tax_rate: "5",
     currency: "BDT",
     receipt_footer: "Thank you for choosing Resh Perfumes!",
+    default_low_perfume_threshold: "100",
+    default_low_bottle_threshold: "10",
   });
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setMounted(true);
     (async () => {
       try {
         const { data, error } = await supabase
@@ -45,30 +44,55 @@ export default function SettingsPage() {
             tax_rate: String(data.tax_rate || 5),
             currency: data.currency || "BDT",
             receipt_footer: data.receipt_footer || "Thank you for choosing Resh Perfumes!",
+            default_low_perfume_threshold: String(data.default_low_perfume_threshold ?? 100),
+            default_low_bottle_threshold: String(data.default_low_bottle_threshold ?? 10),
           });
         }
       } catch {
-        // Use defaults if loading fails
+        // Use defaults
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [supabase]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const { error } = await supabase
+      const { data: existing } = await supabase
         .from("business_settings")
-        .update({
-          business_name: business.business_name,
-          tagline: business.tagline,
-          currency: business.currency,
-          tax_rate: parseFloat(business.tax_rate) || 5,
-          receipt_footer: business.receipt_footer,
-        })
-        .eq("id", (await supabase.from("business_settings").select("id").limit(1).single()).data?.id);
-      if (error) throw error;
+        .select("id")
+        .limit(1)
+        .single();
+
+      if (existing) {
+        const { error } = await supabase
+          .from("business_settings")
+          .update({
+            business_name: business.business_name,
+            tagline: business.tagline,
+            currency: business.currency,
+            tax_rate: parseFloat(business.tax_rate) || 5,
+            receipt_footer: business.receipt_footer,
+            default_low_perfume_threshold: parseFloat(business.default_low_perfume_threshold) || 100,
+            default_low_bottle_threshold: parseInt(business.default_low_bottle_threshold) || 10,
+          })
+          .eq("id", existing.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("business_settings")
+          .insert({
+            business_name: business.business_name,
+            tagline: business.tagline,
+            currency: business.currency,
+            tax_rate: parseFloat(business.tax_rate) || 5,
+            receipt_footer: business.receipt_footer,
+            default_low_perfume_threshold: parseFloat(business.default_low_perfume_threshold) || 100,
+            default_low_bottle_threshold: parseInt(business.default_low_bottle_threshold) || 10,
+          });
+        if (error) throw error;
+      }
       toast.success("Settings saved to database");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to save settings";
@@ -88,7 +112,7 @@ export default function SettingsPage() {
     toast.success("Settings exported");
   };
 
-  if (!mounted || loading) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin h-8 w-8 border-4 border-gold border-t-transparent rounded-full" />
@@ -134,6 +158,22 @@ export default function SettingsPage() {
             <div className="space-y-2">
               <Label>Tax Rate (%)</Label>
               <Input type="number" step="0.1" value={business.tax_rate} onChange={(e) => setBusiness({ ...business, tax_rate: e.target.value })} />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>Stock Defaults</CardTitle><CardDescription>Default thresholds for low stock alerts on new variants.</CardDescription></CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Default Low Perfume Threshold (ml)</Label>
+              <Input type="number" min={0} value={business.default_low_perfume_threshold} onChange={(e) => setBusiness({ ...business, default_low_perfume_threshold: e.target.value })} />
+            </div>
+            <div className="space-y-2">
+              <Label>Default Low Bottle Threshold</Label>
+              <Input type="number" min={0} value={business.default_low_bottle_threshold} onChange={(e) => setBusiness({ ...business, default_low_bottle_threshold: e.target.value })} />
             </div>
           </div>
         </CardContent>

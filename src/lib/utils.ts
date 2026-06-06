@@ -55,17 +55,48 @@ export function calculateSaleTotals(
 }
 
 export function validateStockBeforeSale(
-  items: CartItem[]
+  items: CartItem[],
+  saleType: "retail" | "wholesale" = "retail"
 ): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
   for (const item of items) {
     if (item.qty <= 0) {
       errors.push(`${item.productName}: quantity must be greater than 0`);
+      continue;
     }
-    if (item.qty > item.variant.stock_quantity) {
-      errors.push(
-        `${item.productName} (${item.variant.size_ml}ml): only ${item.variant.stock_quantity}ml in stock, requested ${item.qty}ml`
-      );
+
+    if (saleType === "retail") {
+      // Retail: check perfume ml stock and bottle stock
+      const neededMl = item.qty * item.variant.size_ml;
+      if (neededMl > (item.variant.stock_ml || 0)) {
+        errors.push(
+          `${item.productName} (${item.variant.size_ml}ml): only ${item.variant.stock_ml || 0}ml perfume stock, need ${neededMl}ml for ${item.qty} bottle(s)`
+        );
+      }
+      if (item.qty > (item.variant.bottle_stock_qty || 0)) {
+        errors.push(
+          `${item.productName} (${item.variant.size_ml}ml): only ${item.variant.bottle_stock_qty || 0} bottle(s) in stock`
+        );
+      }
+    } else {
+      // Wholesale: check perfume ml stock based on custom ml quantity
+      const wholesaleMl = item.wholesaleMl || 0;
+      if (wholesaleMl <= 0) {
+        errors.push(`${item.productName}: wholesale ml quantity must be specified`);
+        continue;
+      }
+      if (wholesaleMl > (item.variant.stock_ml || 0)) {
+        errors.push(
+          `${item.productName}: only ${item.variant.stock_ml || 0}ml perfume stock, requested ${wholesaleMl}ml`
+        );
+      }
+      // Check bottle stock if bottle is used
+      const bottleQty = item.bottleQty || 0;
+      if (bottleQty > (item.variant.bottle_stock_qty || 0)) {
+        errors.push(
+          `${item.productName}: only ${item.variant.bottle_stock_qty || 0} bottle(s) in stock, need ${bottleQty}`
+        );
+      }
     }
   }
   return { valid: errors.length === 0, errors };
