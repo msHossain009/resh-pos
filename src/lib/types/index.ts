@@ -22,11 +22,20 @@ export interface Variant {
   price: number;
   cost: number;
   sku: string;
-  stock_quantity: number;
+  stock_quantity: number; // legacy, kept for backward compat
   low_stock_threshold: number;
   barcode: string | null;
   active: boolean;
   created_at: string;
+  // New ml/bottle fields
+  stock_ml: number;
+  low_stock_ml_threshold: number;
+  bottle_stock_qty: number;
+  low_bottle_threshold: number;
+  retail_price: number | null;
+  retail_cost: number | null;
+  wholesale_price_per_ml: number | null;
+  wholesale_cost_per_ml: number | null;
   products?: { name: string; category: string | null };
 }
 
@@ -40,6 +49,8 @@ export interface Customer {
   total_spent: number;
   created_at: string;
   updated_at: string;
+  customer_type: "retail" | "wholesale";
+  due_amount: number;
 }
 
 export interface Sale {
@@ -62,7 +73,10 @@ export interface Sale {
   discount_type: "amount" | "percent";
   created_by: string | null;
   created_at: string;
-  customers?: { name: string } | null;
+  // New fields
+  sale_type: "retail" | "wholesale";
+  status: "completed" | "cancelled" | "refunded";
+  customers?: { name: string; customer_type?: string } | null;
   sale_items?: SaleItem[];
 }
 
@@ -128,7 +142,7 @@ export interface Expense {
 export interface StockMovement {
   id: string;
   variant_id: string;
-  type: "sale" | "purchase_receive" | "adjustment" | "return" | "damage";
+  type: "sale" | "purchase_receive" | "adjustment" | "return" | "damage" | "cancel_return";
   quantity_change: number;
   previous_quantity: number;
   new_quantity: number;
@@ -137,6 +151,13 @@ export interface StockMovement {
   reference_id: string | null;
   created_by: string | null;
   created_at: string;
+  // New ml/bottle fields
+  perfume_ml_change: number;
+  bottle_qty_change: number;
+  previous_perfume_ml: number;
+  new_perfume_ml: number;
+  previous_bottle_qty: number;
+  new_bottle_qty: number;
 }
 
 export interface BusinessSettings {
@@ -148,6 +169,8 @@ export interface BusinessSettings {
   receipt_footer: string;
   created_at: string;
   updated_at: string;
+  default_low_perfume_threshold: number;
+  default_low_bottle_threshold: number;
 }
 
 export interface UserProfile {
@@ -164,6 +187,10 @@ export interface CartItem {
   productName: string;
   qty: number;
   unitPrice: number;
+  // For wholesale: custom ml quantity
+  wholesaleMl?: number;
+  // For retail: bottle quantity
+  bottleQty?: number;
 }
 
 export interface SaleTotals {
@@ -185,4 +212,19 @@ export const MEMBERSHIP_TIERS = [
 export function getMembershipTier(totalSpent: number): string {
   const tier = [...MEMBERSHIP_TIERS].reverse().find((t) => totalSpent >= t.minSpent);
   return tier?.name ?? "Regular";
+}
+
+// Stock risk status helpers
+export type StockRiskLevel = "safe" | "low" | "out";
+
+export function getPerfumeStockRisk(stockMl: number, threshold: number): StockRiskLevel {
+  if (stockMl <= 0) return "out";
+  if (stockMl < threshold) return "low";
+  return "safe";
+}
+
+export function getBottleStockRisk(bottleQty: number, threshold: number): StockRiskLevel {
+  if (bottleQty <= 0) return "out";
+  if (bottleQty < threshold) return "low";
+  return "safe";
 }

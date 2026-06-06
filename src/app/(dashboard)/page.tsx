@@ -6,8 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
 import {
-  ShoppingCart, Package, Users, AlertTriangle,
-  DollarSign, BarChart3, Truck, Receipt,
+  ShoppingCart, Package, Users, AlertTriangle, DollarSign,
+  BarChart3, Truck, Receipt, TrendingUp, TrendingDown, FlaskConical, BottleWine,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -35,8 +35,10 @@ interface DashboardData {
   monthProfit: number;
   totalProducts: number;
   totalCustomers: number;
-  lowStockItems: { id: string; products: { name: string } | null; stock_quantity: number }[];
-  outStockItems: { id: string; products: { name: string } | null; stock_quantity: number }[];
+  perfumeLowCount: number;
+  perfumeOutCount: number;
+  bottleLowCount: number;
+  bottleOutCount: number;
   dueCount: number;
   dueAmount: number;
   recentSales: RecentSale[];
@@ -57,8 +59,10 @@ export default function Dashboard() {
         monthStart.setDate(1);
         const monthStr = monthStart.toISOString();
 
-        const [productsCount, customersCount,
-          { data: lowStock }, { data: outStock },
+        const [
+          productsCount, customersCount,
+          { data: lowPerfume }, { data: outPerfume },
+          { data: lowBottle }, { data: outBottle },
           { data: todaySales }, { data: monthSales },
           { data: monthExpenses }, { data: recentSales },
           { data: dueSales }, { data: pendingPOs },
@@ -66,8 +70,10 @@ export default function Dashboard() {
         ] = await Promise.all([
           supabase.from("products").select("*", { count: "exact", head: true }).eq("active", true),
           supabase.from("customers").select("*", { count: "exact", head: true }),
-          supabase.from("product_variants").select("*, products(name)").lt("stock_quantity", 10).gt("stock_quantity", 0).limit(20),
-          supabase.from("product_variants").select("*, products(name)").lte("stock_quantity", 0).limit(20),
+          supabase.from("product_variants").select("id, products(name)").lt("stock_ml", 100).gt("stock_ml", 0).limit(100),
+          supabase.from("product_variants").select("id, products(name)").lte("stock_ml", 0).limit(100),
+          supabase.from("product_variants").select("id, products(name)").lt("bottle_stock_qty", 10).gt("bottle_stock_qty", 0).limit(100),
+          supabase.from("product_variants").select("id, products(name)").lte("bottle_stock_qty", 0).limit(100),
           supabase.from("sales").select("id, total, subtotal, discount, sale_items(variant_id, quantity, product_variants(cost))").gte("created_at", today),
           supabase.from("sales").select("total").gte("created_at", monthStr),
           supabase.from("expenses").select("amount").gte("created_at", monthStr),
@@ -77,7 +83,6 @@ export default function Dashboard() {
           supabase.from("sales").select("created_at, total").gte("created_at", new Date(Date.now() - 7 * 86400000).toISOString()).order("created_at"),
         ]);
 
-        // Today COGS
         let todayCogs = 0;
         let todayDiscount = 0;
         let todayRevenue = 0;
@@ -98,7 +103,6 @@ export default function Dashboard() {
         const monthExpTotal = monthExpenses?.reduce((s: number, e: { amount: number }) => s + Number(e.amount), 0) || 0;
         const totalDue = dueSales?.reduce((s: number, d: { total: number }) => s + Number(d.total), 0) || 0;
 
-        // Last 7 days chart
         const dayMap: Record<string, number> = {};
         last7Sales?.forEach((s: { created_at: string; total: number }) => {
           const day = new Date(s.created_at).toLocaleDateString("en-GB", { weekday: "short" });
@@ -108,19 +112,12 @@ export default function Dashboard() {
         const chartData = days.map((d) => ({ day: d, revenue: dayMap[d] || 0 }));
 
         setData({
-          todayRevenue,
-          todayCogs,
-          todayProfit: todayRevenue - todayCogs,
-          todayDiscount,
-          monthRevenue,
-          monthExpenses: monthExpTotal,
-          monthProfit: monthRevenue - monthExpTotal,
-          totalProducts: productsCount?.count || 0,
-          totalCustomers: customersCount?.count || 0,
-            lowStockItems: (lowStock || []) as unknown as { id: string; products: { name: string } | null; stock_quantity: number }[],
-            outStockItems: (outStock || []) as unknown as { id: string; products: { name: string } | null; stock_quantity: number }[],
-          dueCount: dueSales?.length || 0,
-          dueAmount: totalDue,
+          todayRevenue, todayCogs, todayProfit: todayRevenue - todayCogs, todayDiscount,
+          monthRevenue, monthExpenses: monthExpTotal, monthProfit: monthRevenue - monthExpTotal,
+          totalProducts: productsCount?.count || 0, totalCustomers: customersCount?.count || 0,
+          perfumeLowCount: lowPerfume?.length || 0, perfumeOutCount: outPerfume?.length || 0,
+          bottleLowCount: lowBottle?.length || 0, bottleOutCount: outBottle?.length || 0,
+          dueCount: dueSales?.length || 0, dueAmount: totalDue,
           recentSales: (recentSales || []) as unknown as RecentSale[],
           pendingPOs: pendingPOs || [],
           chartData,
@@ -131,7 +128,7 @@ export default function Dashboard() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [supabase]);
 
   if (loading) {
     return (
@@ -142,22 +139,27 @@ export default function Dashboard() {
   }
 
   const alerts: { type: "destructive" | "warning"; message: string; link?: string }[] = [];
-  if (data && data.lowStockItems.length > 0) alerts.push({ type: "warning", message: `${data.lowStockItems.length} items low on stock`, link: "/inventory" });
-  if (data && data.outStockItems.length > 0) alerts.push({ type: "destructive", message: `${data.outStockItems.length} items out of stock`, link: "/inventory" });
+  if (data && data.perfumeOutCount > 0) alerts.push({ type: "destructive", message: `${data.perfumeOutCount} variants out of perfume stock`, link: "/inventory" });
+  if (data && data.perfumeLowCount > 0) alerts.push({ type: "warning", message: `${data.perfumeLowCount} variants low on perfume`, link: "/inventory" });
+  if (data && data.bottleOutCount > 0) alerts.push({ type: "destructive", message: `${data.bottleOutCount} variants out of bottles`, link: "/inventory" });
+  if (data && data.bottleLowCount > 0) alerts.push({ type: "warning", message: `${data.bottleLowCount} variants low on bottles`, link: "/inventory" });
   if (data && data.dueCount > 0) alerts.push({ type: "destructive", message: `${data.dueCount} unpaid/due sales (${formatCurrency(data.dueAmount)})`, link: "/sales" });
   if (data && data.pendingPOs.length > 0) alerts.push({ type: "warning", message: `${data.pendingPOs.length} pending purchase orders`, link: "/suppliers" });
+
+  const isProfit = (data?.todayProfit || 0) >= 0;
+  const isMonthProfit = (data?.monthProfit || 0) >= 0;
 
   return (
     <div className="space-y-6">
       {/* Alerts */}
       {alerts.length > 0 && (
         <div className="space-y-2">
-          {alerts.map((alert, idx) => (
+          {alerts.slice(0, 3).map((alert, idx) => (
             <Link key={idx} href={alert.link || "#"}>
-              <Card className={`${alert.type === "destructive" ? "border-destructive/50 bg-destructive/5" : "border-yellow-500/50 bg-yellow-500/5"} cursor-pointer hover:opacity-80`}>
+              <Card className={`${alert.type === "destructive" ? "border-red-500/50 bg-red-500/5" : "border-yellow-500/50 bg-yellow-500/5"} cursor-pointer hover:opacity-80`}>
                 <CardContent className="py-3 flex items-center gap-3">
-                  <AlertTriangle className={`h-5 w-5 ${alert.type === "destructive" ? "text-destructive" : "text-yellow-500"}`} />
-                  <p className={`text-sm font-medium ${alert.type === "destructive" ? "text-destructive" : "text-yellow-600"}`}>
+                  <AlertTriangle className={`h-5 w-5 ${alert.type === "destructive" ? "text-red-500" : "text-yellow-500"}`} />
+                  <p className={`text-sm font-medium ${alert.type === "destructive" ? "text-red-600 dark:text-red-400" : "text-yellow-600 dark:text-yellow-400"}`}>
                     {alert.message}
                   </p>
                 </CardContent>
@@ -177,55 +179,64 @@ export default function Dashboard() {
         </Link>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
+      {/* KPI Cards - Distinct colors, larger icons */}
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+        <Card className="border-l-4 border-l-gold">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Today&apos;s Sales</CardTitle>
-            <DollarSign className="h-4 w-4 text-gold" />
+            <div className="p-2 rounded-lg bg-gold/10"><DollarSign className="h-5 w-5 text-gold" /></div>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(data?.todayRevenue || 0)}</div>
-            <p className="text-xs text-muted-foreground">
+            <p className={`text-xs flex items-center gap-1 mt-1 ${isProfit ? "text-green-600" : "text-destructive"}`}>
+              {isProfit ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
               Profit: {formatCurrency(data?.todayProfit || 0)}
-              {data && data.todayDiscount > 0 && ` · Discount: ${formatCurrency(data.todayDiscount)}`}
+              {(data?.todayDiscount || 0) > 0 && <span className="text-muted-foreground">· Disc: {formatCurrency(data?.todayDiscount || 0)}</span>}
             </p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-l-4 border-l-blue-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">This Month</CardTitle>
-            <BarChart3 className="h-4 w-4 text-gold" />
+            <CardTitle className="text-sm font-medium">This Month Revenue</CardTitle>
+            <div className="p-2 rounded-lg bg-blue-500/10"><BarChart3 className="h-5 w-5 text-blue-500" /></div>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(data?.monthRevenue || 0)}</div>
-            <p className="text-xs text-muted-foreground">
+            <p className={`text-xs flex items-center gap-1 mt-1 ${isMonthProfit ? "text-green-600" : "text-destructive"}`}>
               Expenses: {formatCurrency(data?.monthExpenses || 0)}
-              {data?.monthProfit !== undefined && ` · Net: ${formatCurrency(data.monthProfit)}`}
+              <span className="text-muted-foreground">· Net: {formatCurrency(data?.monthProfit || 0)}</span>
             </p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-l-4 border-l-purple-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Products</CardTitle>
-            <Package className="h-4 w-4 text-gold" />
+            <CardTitle className="text-sm font-medium">Products / Customers</CardTitle>
+            <div className="p-2 rounded-lg bg-purple-500/10"><Package className="h-5 w-5 text-purple-500" /></div>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{data?.totalProducts || 0}</div>
-            <p className="text-xs text-muted-foreground">Active products</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              <Users className="h-3 w-3 inline mr-1" />{data?.totalCustomers || 0} customers
+            </p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-l-4 border-l-amber-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Customers</CardTitle>
-            <Users className="h-4 w-4 text-gold" />
+            <CardTitle className="text-sm font-medium">Stock Alerts</CardTitle>
+            <div className="p-2 rounded-lg bg-amber-500/10"><AlertTriangle className="h-5 w-5 text-amber-500" /></div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{data?.totalCustomers || 0}</div>
-            <p className="text-xs text-muted-foreground">Registered customers</p>
+            <div className="text-2xl font-bold">{data ? (data.perfumeLowCount + data.perfumeOutCount + data.bottleLowCount + data.bottleOutCount) : 0}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              <FlaskConical className="h-3 w-3 inline mr-1" />
+              Perfume: {data?.perfumeOutCount || 0} out / {data?.perfumeLowCount || 0} low
+              <span className="mx-1">·</span>
+              <BottleWine className="h-3 w-3 inline mr-1" />
+              Bottles: {data?.bottleOutCount || 0} out / {data?.bottleLowCount || 0} low
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -252,26 +263,21 @@ export default function Dashboard() {
 
         {/* Recent Sales */}
         <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Recent Sales</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle className="text-lg">Recent Sales</CardTitle></CardHeader>
           <CardContent>
             {data?.recentSales && data.recentSales.length > 0 ? (
               <div className="space-y-3">
-                {data.recentSales.map((sale: { id: string; invoice_no: string; total: number; payment_status: string; payment_method: string; customers: { name: string } | null }) => (
+                {data.recentSales.map((sale) => (
                   <div key={sale.id} className="flex items-center justify-between border-b pb-2 last:border-0">
                     <div>
                       <p className="text-sm font-medium">{sale.invoice_no}</p>
                       <p className="text-xs text-muted-foreground">
-                        {sale.customers?.name || "Walk-in"} &middot; {sale.payment_method}
+                        {sale.customers?.name || "Walk-in"} · {sale.payment_method}
                       </p>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right flex items-center gap-2">
                       <span className="text-sm font-semibold">{formatCurrency(sale.total)}</span>
-                      <Badge
-                        variant={sale.payment_status === "Paid" ? "success" : sale.payment_status === "Partial" ? "warning" : "destructive"}
-                        className="ml-2 text-xs"
-                      >
+                      <Badge variant={sale.payment_status === "Paid" ? "success" : sale.payment_status === "Partial" ? "warning" : "destructive"} className="text-xs">
                         {sale.payment_status}
                       </Badge>
                     </div>
@@ -293,23 +299,23 @@ export default function Dashboard() {
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Link href="/sales">
-              <Button variant="outline" className="w-full justify-start gap-3 h-12">
-                <ShoppingCart className="h-5 w-5" /> New Sale
+              <Button variant="outline" className="w-full justify-start gap-3 h-12 border-l-4 border-l-gold">
+                <ShoppingCart className="h-5 w-5 text-gold" /> New Sale
               </Button>
             </Link>
             <Link href="/products">
-              <Button variant="outline" className="w-full justify-start gap-3 h-12">
-                <Package className="h-5 w-5" /> Add Product
+              <Button variant="outline" className="w-full justify-start gap-3 h-12 border-l-4 border-l-purple-500">
+                <Package className="h-5 w-5 text-purple-500" /> Add Product
               </Button>
             </Link>
             <Link href="/expenses">
-              <Button variant="outline" className="w-full justify-start gap-3 h-12">
-                <Receipt className="h-5 w-5" /> Add Expense
+              <Button variant="outline" className="w-full justify-start gap-3 h-12 border-l-4 border-l-red-500">
+                <Receipt className="h-5 w-5 text-red-500" /> Add Expense
               </Button>
             </Link>
             <Link href="/suppliers">
-              <Button variant="outline" className="w-full justify-start gap-3 h-12">
-                <Truck className="h-5 w-5" /> New PO
+              <Button variant="outline" className="w-full justify-start gap-3 h-12 border-l-4 border-l-blue-500">
+                <Truck className="h-5 w-5 text-blue-500" /> New PO
               </Button>
             </Link>
           </div>

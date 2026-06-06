@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,8 +15,12 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { formatCurrency, formatDateFull } from "@/lib/utils";
 import { getMembershipTier, MEMBERSHIP_TIERS } from "@/lib/types";
+import { CUSTOMER_TYPES } from "@/lib/constants";
 import { can } from "@/lib/helpers";
 import { useProfile } from "@/lib/profile-context";
 import type { Customer } from "@/lib/types";
@@ -41,13 +45,13 @@ export default function CustomersPage() {
   const [customerLoyalty, setCustomerLoyalty] = useState<{ id: string; type: string; points: number; description: string; created_at: string }[]>([]);
   const [detailsLoading, setDetailsLoading] = useState(false);
 
-  const [form, setForm] = useState({ name: "", email: "", phone: "", barcode_id: "" });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", barcode_id: "", customer_type: "retail" as "retail" | "wholesale" });
   // Loyalty adjustment
   const [showLoyalty, setShowLoyalty] = useState(false);
   const [loyaltyPoints, setLoyaltyPoints] = useState("0");
   const [loyaltySaving, setLoyaltySaving] = useState(false);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     const [c, s] = await Promise.all([
       supabase.from("customers").select("*").order("created_at", { ascending: false }),
       supabase.from("sales").select("id, customer_id, total, paid_amount").neq("payment_status", "Paid"),
@@ -55,21 +59,21 @@ export default function CustomersPage() {
     if (c.data) setCustomers(c.data);
     if (s.data) setSales(s.data);
     setLoading(false);
-  };
+  }, [supabase]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   const resetForm = () => {
-    setForm({ name: "", email: "", phone: "", barcode_id: "" });
+    setForm({ name: "", email: "", phone: "", barcode_id: "", customer_type: "retail" });
     setEditing(null);
   };
 
   const openEdit = (c: Customer) => {
     setEditing(c);
-    setForm({ name: c.name, email: c.email || "", phone: c.phone || "", barcode_id: c.barcode_id || "" });
+    setForm({ name: c.name, email: c.email || "", phone: c.phone || "", barcode_id: c.barcode_id || "", customer_type: c.customer_type || "retail" });
     setShowDialog(true);
   };
 
@@ -87,7 +91,7 @@ export default function CustomersPage() {
     }
 
     setSaving(true);
-    const data = { name: form.name, email: form.email || null, phone: form.phone || null, barcode_id: form.barcode_id || null };
+    const data = { name: form.name, email: form.email || null, phone: form.phone || null, barcode_id: form.barcode_id || null, customer_type: form.customer_type };
 
     if (editing) {
       const { error } = await supabase.from("customers").update(data).eq("id", editing.id);
@@ -171,9 +175,11 @@ export default function CustomersPage() {
         </Button>
       </div>
 
-      <div className="flex items-center gap-2 max-w-sm">
-        <Search className="h-4 w-4 text-muted-foreground" />
-        <Input placeholder="Search by name, email, phone or barcode..." value={search} onChange={(e) => setSearch(e.target.value)} />
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 flex-1 min-w-[200px] max-w-sm">
+          <Search className="h-4 w-4 text-muted-foreground" />
+          <Input placeholder="Search by name, email, phone or barcode..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
       </div>
 
       <Card>
@@ -183,6 +189,7 @@ export default function CustomersPage() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Contact</TableHead>
+                <TableHead>Type</TableHead>
                 <TableHead>Membership</TableHead>
                 <TableHead>Loyalty Points</TableHead>
                 <TableHead>Total Spent</TableHead>
@@ -192,9 +199,9 @@ export default function CustomersPage() {
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
               ) : filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No customers found.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No customers found.</TableCell></TableRow>
               ) : (
                 filtered.map((c) => {
                   const due = getDueAmount(c.id);
@@ -204,6 +211,11 @@ export default function CustomersPage() {
                       <TableCell>
                         <div className="text-sm">{c.email || "-"}</div>
                         <div className="text-xs text-muted-foreground">{c.phone || "-"}</div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={c.customer_type === "wholesale" ? "gold" : "secondary"}>
+                          {c.customer_type || "retail"}
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         <Badge variant={
@@ -261,9 +273,20 @@ export default function CustomersPage() {
                 <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="Phone number" />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label>Barcode ID (optional, for loyalty scan)</Label>
-              <Input value={form.barcode_id} onChange={(e) => setForm({ ...form, barcode_id: e.target.value })} placeholder="E.g. CST-0001" />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Customer Type</Label>
+                <Select value={form.customer_type} onValueChange={(v) => setForm({ ...form, customer_type: v as "retail" | "wholesale" })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {CUSTOMER_TYPES.map((t) => (<SelectItem key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</SelectItem>))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Barcode ID (optional, for loyalty scan)</Label>
+                <Input value={form.barcode_id} onChange={(e) => setForm({ ...form, barcode_id: e.target.value })} placeholder="E.g. CST-0001" />
+              </div>
             </div>
           </div>
           <DialogFooter>

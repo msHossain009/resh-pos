@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,7 +63,7 @@ export default function SuppliersPage() {
   const [receiveItems, setReceiveItems] = useState<{ id: string; variant_label: string; quantity: number; received_quantity: number; receive_qty: string }[]>([]);
   const [receiveSaving, setReceiveSaving] = useState(false);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     const [s, po, v] = await Promise.all([
       supabase.from("suppliers").select("*").order("name"),
       supabase.from("purchase_orders").select("*, suppliers(name)").order("created_at", { ascending: false }).limit(50),
@@ -72,12 +72,12 @@ export default function SuppliersPage() {
     if (s.data) setSuppliers(s.data);
     if (po.data) setPurchaseOrders(po.data);
     if (v.data) setVariants(v.data);
-  };
+  }, [supabase]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   // Supplier CRUD
   const handleSaveSupplier = async () => {

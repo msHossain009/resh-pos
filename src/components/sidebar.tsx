@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { APP_NAME } from "@/lib/constants";
 import {
   LayoutDashboard,
   Package,
@@ -58,11 +58,15 @@ export function Sidebar() {
         )}
       >
         <div className="flex h-16 items-center justify-between px-6 border-b border-sidebar-accent/20">
-          <Link href="/" className="flex items-center gap-2" onClick={() => setOpen(false)}>
-            <div className="flex h-8 w-8 items-center justify-center rounded bg-sidebar-accent text-sidebar-accent-foreground font-bold text-sm">
-              R
-            </div>
-            <span className="text-lg font-bold tracking-wider">{APP_NAME}</span>
+          <Link href="/" className="flex items-center" onClick={() => setOpen(false)}>
+            <Image
+              src="/resh-logo.png"
+              alt="Resh Logo"
+              width={110}
+              height={36}
+              priority
+              className="h-8 w-auto object-contain"
+            />
           </Link>
           <button onClick={() => setOpen(false)} className="lg:hidden text-sidebar-foreground/60 hover:text-sidebar-foreground">
             <X className="h-5 w-5" />

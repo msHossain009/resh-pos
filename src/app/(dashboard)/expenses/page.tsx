@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,7 +51,7 @@ export default function ExpensesPage() {
     notes: "",
   });
 
-  const fetchExpenses = async () => {
+  const fetchExpenses = useCallback(async () => {
     setLoading(true);
     let query = supabase.from("expenses").select("*").order("date", { ascending: false });
 
@@ -63,12 +63,12 @@ export default function ExpensesPage() {
     const { data } = await query;
     if (data) setExpenses(data);
     setLoading(false);
-  };
+  }, [supabase, filterCategory, filterPayment, filterDateFrom, filterDateTo]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchExpenses();
-  }, [filterCategory, filterPayment, filterDateFrom, filterDateTo]);
+  }, [fetchExpenses]);
 
   const resetForm = () => {
     setForm({
