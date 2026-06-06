@@ -117,10 +117,20 @@ Perfume/attar POS web app: Next.js 16, TypeScript, Supabase, Tailwind 4, Radix U
 - Dashboard uses `dynamic = "force-dynamic"` on layout (Supabase SSR fix)
 - Date filter uses `sale_type` on sales table, not `customers.customer_type`
 
+## Migration Fixes (Session 3 — self-contained rewrites)
+- **Migration 001**: Now fully self-contained. Adds a bootstrap section that creates ALL referenced tables (`categories`, `products`, `product_variants`, `business_settings`, `customers`, `sales`, `stock_movements`) plus all sequences using `CREATE TABLE IF NOT EXISTS`. No dependency on `schema.sql`. Handles missing `stock_movements` table.
+- **Migration 002**: Fully self-contained. Creates `sale_items`, `suppliers`, `expenses`, `loyalty_transactions`, `purchase_orders`, `purchase_order_items`, `audit_logs` if missing. The final UPDATE query wrapped in a `DO $$` block that checks for `retail_cost` column existence before running (fixes `42703` error).
+- **Migration 003**: Now creates `profiles` table with `CREATE TABLE IF NOT EXISTS` at the top before the `get_user_role()` function references it (fixes `42P01` error).
+- All migrations use `IF NOT EXISTS` / `IF EXISTS` throughout — safe to re-run.
+
+## Bug Fixes (Session 3)
+- Sales page: Added `!== "all"` guards on all 5 Supabase filter conditions (customer, payment, order type, sale type, status)
+- Settings page: Added "Reset Demo Data" button that removes existing demo data and re-adds fresh
+
 ## Build Status
 - npm run lint: 0 errors, 0 warnings
-- npm run build: passes, 15 routes, 0 errors
+- npm run build: passes, 12 routes, 0 errors
 
 ## Pending
-- Run migration_001 and migration_002 in Supabase SQL Editor before using
+- Run migrations in ANY order: `migration_001` → `migration_002` → `migration_003` (each is self-contained)
 - Test all features end-to-end with real data

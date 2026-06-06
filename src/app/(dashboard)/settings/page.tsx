@@ -9,7 +9,7 @@ import { APP_NAME } from "@/lib/constants";
 import { useTheme } from "next-themes";
 import { can, addDemoData, removeDemoData } from "@/lib/helpers";
 import { useProfile } from "@/lib/profile-context";
-import { Moon, Sun, Save, Download, Loader2, Plus, Trash2 } from "lucide-react";
+import { Moon, Sun, Save, Download, Loader2, Plus, Trash2, RefreshCw } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import toast from "react-hot-toast";
 
@@ -219,6 +219,28 @@ export default function SettingsPage() {
                 btn.innerHTML = '<svg class="h-4 w-4" ...>Add Demo Data';
               }}>
                 <Plus className="h-4 w-4" /> Add Demo Data
+              </Button>
+              <Button variant="gold" className="gap-2" onClick={async () => {
+                if (!confirm("Reset all demo data? This will remove and re-add all demo records.")) return;
+                const btn = document.activeElement as HTMLButtonElement;
+                btn.disabled = true;
+                btn.innerHTML = 'Resetting...';
+                const remove = await removeDemoData();
+                if (!remove.success) {
+                  toast.error("Failed to remove existing demo data: " + remove.message);
+                  btn.disabled = false;
+                  btn.innerHTML = 'Reset Demo Data';
+                  return;
+                }
+                const add = await addDemoData();
+                if (add.success) {
+                  toast.success("Demo data reset successfully: " + add.message);
+                } else {
+                  toast.error("Failed to add demo data: " + add.message);
+                }
+                btn.disabled = false;
+              }}>
+                <RefreshCw className="h-4 w-4" /> Reset Demo Data
               </Button>
               <Button variant="destructive" className="gap-2" onClick={async () => {
                 if (!confirm("Remove ALL demo data? This will delete all records marked as demo data.")) return;

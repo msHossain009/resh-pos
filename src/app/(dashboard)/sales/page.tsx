@@ -126,11 +126,11 @@ export default function SalesPage() {
 
     if (filterDateFrom) query = query.gte("sale_date", filterDateFrom);
     if (filterDateTo) query = query.lte("sale_date", filterDateTo);
-    if (filterCustomer) query = query.eq("customer_id", filterCustomer);
-    if (filterPaymentMethod) query = query.eq("payment_method", filterPaymentMethod);
-    if (filterOrderType) query = query.eq("order_type", filterOrderType);
-    if (filterSaleType) query = query.eq("sale_type", filterSaleType);
-    if (filterStatus) query = query.eq("status", filterStatus);
+    if (filterCustomer && filterCustomer !== "all") query = query.eq("customer_id", filterCustomer);
+    if (filterPaymentMethod && filterPaymentMethod !== "all") query = query.eq("payment_method", filterPaymentMethod);
+    if (filterOrderType && filterOrderType !== "all") query = query.eq("order_type", filterOrderType);
+    if (filterSaleType && filterSaleType !== "all") query = query.eq("sale_type", filterSaleType);
+    if (filterStatus && filterStatus !== "all") query = query.eq("status", filterStatus);
 
     const { data } = await query;
     if (data) setSales(data);
