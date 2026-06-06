@@ -53,9 +53,12 @@ export default function ReportsPage() {
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [filterCustomer, setFilterCustomer] = useState("");
+  const [filterCustomerType, setFilterCustomerType] = useState("");
   const [filterPayment, setFilterPayment] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
-  const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
+  const [filterSaleType, setFilterSaleType] = useState("");
+  const [filterOrderType, setFilterOrderType] = useState("");
+  const [customers, setCustomers] = useState<{ id: string; name: string; customer_type?: string }[]>([]);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const supabase = createClient();
 
@@ -89,15 +92,17 @@ export default function ReportsPage() {
 
         let salesQuery = supabase
           .from("sales")
-          .select("id, total, subtotal, discount, tax, tax_amount, payment_method, order_type, sale_type, status, created_at, customer_id, customers(name), sale_items(variant_id, quantity, subtotal, unit_price, product_variants(cost, retail_cost, wholesale_cost_per_ml, products(name)))")
+          .select("id, total, subtotal, discount, tax, tax_amount, payment_method, order_type, sale_type, status, created_at, customer_id, customers(name), sale_items(variant_id, quantity, subtotal, unit_price, unit_cost, line_cost, line_profit, perfume_ml_sold, bottle_qty_sold, product_name_snapshot, product_variants(cost, retail_cost, wholesale_cost_per_ml, products(name)))")
           .gte("created_at", fromStr)
           .lte("created_at", toStr)
-          .neq("status", "cancelled")
           .order("created_at");
 
-        if (filterCustomer) salesQuery = salesQuery.eq("customer_id", filterCustomer);
-        if (filterPayment) salesQuery = salesQuery.eq("payment_method", filterPayment);
-        if (filterStatus) salesQuery = salesQuery.eq("status", filterStatus);
+        if (filterCustomer && filterCustomer !== "all") salesQuery = salesQuery.eq("customer_id", filterCustomer);
+        if (filterCustomerType && filterCustomerType !== "all") salesQuery = salesQuery.eq("sale_type", filterCustomerType);
+        if (filterPayment && filterPayment !== "all") salesQuery = salesQuery.eq("payment_method", filterPayment);
+        if (filterStatus && filterStatus !== "all") salesQuery = salesQuery.eq("status", filterStatus);
+        if (filterSaleType && filterSaleType !== "all") salesQuery = salesQuery.eq("sale_type", filterSaleType);
+        if (filterOrderType && filterOrderType !== "all") salesQuery = salesQuery.eq("order_type", filterOrderType);
 
         const { data: sales } = await salesQuery;
         const { data: expenses } = await supabase
@@ -123,7 +128,7 @@ export default function ReportsPage() {
         }
 
         let revenue = 0, discount = 0, tax = 0, cogs = 0;
-        const transactions = sales.length;
+        let allTransactions = 0;
         const dayMap: Record<string, number> = {};
         const payMap: Record<string, number> = {};
         const orderMap: Record<string, number> = {};
@@ -137,8 +142,15 @@ export default function ReportsPage() {
             created_at: string; payment_method: string; order_type: string; sale_type: string;
             status: string; customer_id: string | null; customers?: { name: string } | null;
             sale_items?: { variant_id: string; quantity: number; subtotal: number; unit_price: number;
+              unit_cost: number; line_cost: number; line_profit: number;
+              perfume_ml_sold: number; bottle_qty_sold: number; product_name_snapshot: string;
               product_variants?: { cost: number; retail_cost: number | null; wholesale_cost_per_ml: number | null; products?: { name: string } | null } | null }[]
           };
+
+          allTransactions++;
+
+          // Skip cancelled sales from revenue/profit calculations
+          if (s.status === "cancelled") continue;
 
           revenue += Number(s.total) || 0;
           discount += Number(s.discount) || 0;
@@ -164,14 +176,20 @@ export default function ReportsPage() {
 
           if (s.sale_items) {
             for (const item of s.sale_items) {
-              const itemCost = Number(item.product_variants?.retail_cost ?? item.product_variants?.cost ?? 0);
-              cogs += itemCost * item.quantity;
+              // Use snapshot cost from sale_items (most accurate), fallback to variant cost
+              const itemCost = Number(item.line_cost) || Number(item.unit_cost) * item.quantity ||
+                Number(item.product_variants?.retail_cost ?? item.product_variants?.cost ?? 0) * item.quantity;
+              cogs += itemCost;
 
-              const pName = item.product_variants?.products?.name || "Unknown";
+              const pName = item.product_name_snapshot || item.product_variants?.products?.name || "Unknown";
               if (!prodMap[pName]) prodMap[pName] = { name: pName, qty: 0, revenue: 0, cost: 0 };
               prodMap[pName].qty += item.quantity;
               prodMap[pName].revenue += Number(item.subtotal);
-              prodMap[pName].cost += itemCost * item.quantity;
+
+              // Use snapshot line_cost if available
+              const itemLineCost = Number(item.line_cost) ||
+                (Number(item.product_variants?.retail_cost ?? item.product_variants?.cost ?? 0) * item.quantity);
+              prodMap[pName].cost += itemLineCost;
             }
           }
         }
@@ -179,7 +197,9 @@ export default function ReportsPage() {
         const expensesTotal = expenses?.reduce((sum: number, e: { amount: number }) => sum + Number(e.amount), 0) || 0;
         const grossProfit = revenue - cogs;
         const netProfit = grossProfit - expensesTotal;
-        const avgOrderValue = transactions > 0 ? revenue / transactions : 0;
+        const completedCount = allTransactions - sales.filter((s: { status?: string }) => s.status === "cancelled").length;
+        const avgOrderValue = completedCount > 0 ? revenue / completedCount : 0;
+        const transactions = completedCount;
 
         setSummary({ revenue, discount, tax, cogs, grossProfit, expensesTotal, netProfit, transactions, avgOrderValue });
         const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -203,7 +223,7 @@ export default function ReportsPage() {
       }
     };
     load();
-  }, [getDateRange, filterCustomer, filterPayment, filterStatus, refreshTrigger, supabase]);
+  }, [getDateRange, filterCustomer, filterCustomerType, filterPayment, filterStatus, filterSaleType, filterOrderType, refreshTrigger, supabase]);
 
   const handleExport = () => {
     const headers = ["Metric", "Value"];
@@ -247,7 +267,7 @@ export default function ReportsPage() {
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm">Filters</CardTitle>
-            <Button variant="ghost" size="sm" onClick={() => { setFilterCustomer(""); setFilterPayment(""); setFilterStatus(""); }}>Clear</Button>
+            <Button variant="ghost" size="sm" onClick={() => { setFilterCustomer(""); setFilterCustomerType(""); setFilterPayment(""); setFilterStatus(""); setFilterSaleType(""); setFilterOrderType(""); }}>Clear</Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -282,6 +302,39 @@ export default function ReportsPage() {
               </Select>
             </div>
             <div className="space-y-1">
+              <Label className="text-xs">Customer Type</Label>
+              <Select value={filterCustomerType} onValueChange={setFilterCustomerType}>
+                <SelectTrigger className="h-9 w-32"><SelectValue placeholder="All" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="retail">Retail</SelectItem>
+                  <SelectItem value="wholesale">Wholesale</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Sale Type</Label>
+              <Select value={filterSaleType} onValueChange={setFilterSaleType}>
+                <SelectTrigger className="h-9 w-28"><SelectValue placeholder="All" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="retail">Retail</SelectItem>
+                  <SelectItem value="wholesale">Wholesale</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Order Type</Label>
+              <Select value={filterOrderType} onValueChange={setFilterOrderType}>
+                <SelectTrigger className="h-9 w-28"><SelectValue placeholder="All" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="Offline">Offline</SelectItem>
+                  <SelectItem value="Online">Online</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
               <Label className="text-xs">Payment</Label>
               <Select value={filterPayment} onValueChange={setFilterPayment}>
                 <SelectTrigger className="h-9 w-36"><SelectValue placeholder="All" /></SelectTrigger>
@@ -292,6 +345,17 @@ export default function ReportsPage() {
                   <SelectItem value="Nagad">Nagad</SelectItem>
                   <SelectItem value="Card">Card</SelectItem>
                   <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Status</Label>
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger className="h-9 w-28"><SelectValue placeholder="All" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
                 </SelectContent>
               </Select>
             </div>

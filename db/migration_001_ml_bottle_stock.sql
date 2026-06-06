@@ -1,5 +1,156 @@
 -- Resh POS Migration 001: ML/Bottle Stock, Customer Type, Sale Type/Status
--- Run this in your Supabase SQL Editor after the main schema.sql
+-- Run this in your Supabase SQL Editor (standalone — creates missing tables automatically)
+
+-- ============================================================
+-- BOOTSTRAP: Ensure all referenced tables exist (in dependency order)
+-- Safe to re-run; uses IF NOT EXISTS everywhere
+-- ============================================================
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+CREATE SEQUENCE IF NOT EXISTS product_seq START 1;
+CREATE SEQUENCE IF NOT EXISTS variant_seq START 1;
+CREATE SEQUENCE IF NOT EXISTS invoice_seq START 1;
+CREATE SEQUENCE IF NOT EXISTS customer_seq START 1;
+CREATE SEQUENCE IF NOT EXISTS supplier_seq START 1;
+CREATE SEQUENCE IF NOT EXISTS po_seq START 1;
+
+CREATE TABLE IF NOT EXISTS categories (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  description TEXT,
+  parent_id UUID REFERENCES categories(id),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS products (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  description TEXT,
+  category TEXT,
+  image_url TEXT,
+  barcode TEXT UNIQUE DEFAULT ('PRD-' || LPAD(NEXTVAL('product_seq')::TEXT, 4, '0')),
+  category_id UUID REFERENCES categories(id),
+  active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS product_variants (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  size_ml NUMERIC(8,2) NOT NULL DEFAULT 50,
+  concentration TEXT DEFAULT 'EDP',
+  price NUMERIC(12,2) NOT NULL DEFAULT 0,
+  cost NUMERIC(12,2) DEFAULT 0,
+  sku TEXT UNIQUE DEFAULT ('VAR-' || LPAD(NEXTVAL('variant_seq')::TEXT, 4, '0')),
+  stock_quantity INTEGER NOT NULL DEFAULT 0,
+  low_stock_threshold INTEGER DEFAULT 10,
+  barcode TEXT UNIQUE,
+  active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS business_settings (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  business_name TEXT DEFAULT 'Resh POS',
+  tagline TEXT DEFAULT 'SCENT YOUR WAY TO UNFORGETTABLE',
+  currency TEXT DEFAULT 'BDT',
+  tax_rate NUMERIC DEFAULT 5,
+  receipt_footer TEXT DEFAULT 'Thank you for choosing Resh Perfumes!',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+INSERT INTO business_settings (id)
+SELECT uuid_generate_v4()
+WHERE NOT EXISTS (SELECT 1 FROM business_settings);
+
+CREATE TABLE IF NOT EXISTS customers (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  email TEXT,
+  phone TEXT,
+  barcode_id TEXT UNIQUE DEFAULT ('CST-' || LPAD(NEXTVAL('customer_seq')::TEXT, 4, '0')),
+  loyalty_points INTEGER DEFAULT 0,
+  total_spent NUMERIC(12,2) DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS sales (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  invoice_no TEXT UNIQUE NOT NULL DEFAULT ('INV-' || LPAD(NEXTVAL('invoice_seq')::TEXT, 6, '0')),
+  customer_id UUID REFERENCES customers(id),
+  sale_date DATE DEFAULT CURRENT_DATE,
+  subtotal NUMERIC(12,2) NOT NULL DEFAULT 0,
+  tax NUMERIC(12,2) DEFAULT 0,
+  discount NUMERIC(12,2) DEFAULT 0,
+  total NUMERIC(12,2) NOT NULL DEFAULT 0,
+  payment_method TEXT DEFAULT 'Cash',
+  payment_status TEXT DEFAULT 'Paid',
+  order_type TEXT DEFAULT 'Offline' CHECK (order_type IN ('Online', 'Offline')),
+  notes TEXT,
+  paid_amount NUMERIC(12,2) DEFAULT 0,
+  due_amount NUMERIC(12,2) DEFAULT 0,
+  tax_rate NUMERIC DEFAULT 0,
+  tax_amount NUMERIC(12,2) DEFAULT 0,
+  discount_type TEXT CHECK (discount_type IN ('amount', 'percent')) DEFAULT 'amount',
+  created_by UUID REFERENCES auth.users(id),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS stock_movements (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  variant_id UUID NOT NULL REFERENCES product_variants(id) ON DELETE CASCADE,
+  type TEXT CHECK (type IN ('sale', 'purchase_receive', 'adjustment', 'return', 'damage')),
+  quantity_change INTEGER NOT NULL,
+  previous_quantity INTEGER NOT NULL,
+  new_quantity INTEGER NOT NULL,
+  reason TEXT,
+  reference_type TEXT,
+  reference_id UUID,
+  created_by UUID REFERENCES auth.users(id),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================================
+-- 0. Ensure all columns from CREATE TABLE IF NOT EXISTS exist
+-- (Needed because CREATE TABLE IF NOT EXISTS skips adding columns
+--  when the table already exists)
+-- ============================================================
+ALTER TABLE products ADD COLUMN IF NOT EXISTS barcode TEXT;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES categories(id);
+
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(12,2) DEFAULT 0;
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS due_amount NUMERIC(12,2) DEFAULT 0;
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS tax_rate NUMERIC DEFAULT 0;
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(12,2) DEFAULT 0;
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_type TEXT DEFAULT 'amount';
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES auth.users(id);
+
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS barcode_id TEXT;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS loyalty_points INTEGER DEFAULT 0;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS total_spent NUMERIC(12,2) DEFAULT 0;
+
+ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS barcode TEXT;
+ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS sku TEXT;
+ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE;
+
+-- Set defaults for any NULL barcodes before adding UNIQUE constraints
+UPDATE products SET barcode = 'PRD-' || LPAD(NEXTVAL('product_seq')::TEXT, 4, '0') WHERE barcode IS NULL;
+UPDATE customers SET barcode_id = 'CST-' || LPAD(NEXTVAL('customer_seq')::TEXT, 4, '0') WHERE barcode_id IS NULL;
+UPDATE product_variants SET barcode = 'VAR-' || LPAD(NEXTVAL('variant_seq')::TEXT, 4, '0') WHERE barcode IS NULL;
+UPDATE product_variants SET sku = 'VAR-' || LPAD(NEXTVAL('variant_seq')::TEXT, 4, '0') WHERE sku IS NULL;
+
+-- Now add UNIQUE constraints (separate from ADD COLUMN to avoid timing issues)
+ALTER TABLE products DROP CONSTRAINT IF EXISTS products_barcode_key;
+ALTER TABLE products ADD UNIQUE (barcode);
+ALTER TABLE customers DROP CONSTRAINT IF EXISTS customers_barcode_id_key;
+ALTER TABLE customers ADD UNIQUE (barcode_id);
+ALTER TABLE product_variants DROP CONSTRAINT IF EXISTS product_variants_barcode_key;
+ALTER TABLE product_variants ADD UNIQUE (barcode);
+ALTER TABLE product_variants DROP CONSTRAINT IF EXISTS product_variants_sku_key;
+ALTER TABLE product_variants ADD UNIQUE (sku);
 
 -- ============================================================
 -- 1. product_variants: Add ml/bottle stock and wholesale fields

@@ -30,7 +30,7 @@ export default function ExpensesPage() {
   const { profile } = useProfile();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search] = useState("");
+  const [search, setSearch] = useState("");
   const [showDialog, setShowDialog] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
   const [saving, setSaving] = useState(false);
@@ -55,8 +55,8 @@ export default function ExpensesPage() {
     setLoading(true);
     let query = supabase.from("expenses").select("*").order("date", { ascending: false });
 
-    if (filterCategory) query = query.eq("category", filterCategory);
-    if (filterPayment) query = query.eq("payment_method", filterPayment);
+    if (filterCategory && filterCategory !== "all") query = query.eq("category", filterCategory);
+    if (filterPayment && filterPayment !== "all") query = query.eq("payment_method", filterPayment);
     if (filterDateFrom) query = query.gte("date", filterDateFrom);
     if (filterDateTo) query = query.lte("date", filterDateTo);
 
@@ -214,6 +214,10 @@ export default function ExpensesPage() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-3 items-end">
+            <div className="space-y-1">
+              <Label className="text-xs">Search</Label>
+              <Input placeholder="Search description or category..." className="h-9 w-48" value={search} onChange={(e) => setSearch(e.target.value)} />
+            </div>
             <div className="space-y-1">
               <Label className="text-xs">From</Label>
               <Input type="date" className="h-9 w-40" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} />

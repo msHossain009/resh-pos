@@ -126,11 +126,11 @@ export default function SalesPage() {
 
     if (filterDateFrom) query = query.gte("sale_date", filterDateFrom);
     if (filterDateTo) query = query.lte("sale_date", filterDateTo);
-    if (filterCustomer) query = query.eq("customer_id", filterCustomer);
-    if (filterPaymentMethod) query = query.eq("payment_method", filterPaymentMethod);
-    if (filterOrderType) query = query.eq("order_type", filterOrderType);
-    if (filterSaleType) query = query.eq("sale_type", filterSaleType);
-    if (filterStatus) query = query.eq("status", filterStatus);
+    if (filterCustomer && filterCustomer !== "all") query = query.eq("customer_id", filterCustomer);
+    if (filterPaymentMethod && filterPaymentMethod !== "all") query = query.eq("payment_method", filterPaymentMethod);
+    if (filterOrderType && filterOrderType !== "all") query = query.eq("order_type", filterOrderType);
+    if (filterSaleType && filterSaleType !== "all") query = query.eq("sale_type", filterSaleType);
+    if (filterStatus && filterStatus !== "all") query = query.eq("status", filterStatus);
 
     const { data } = await query;
     if (data) setSales(data);
@@ -318,24 +318,48 @@ export default function SalesPage() {
 
     if (se || !sale) { toast.error("Failed to create sale"); setSaving(false); return; }
 
-    // Build sale items data
+    // Build sale items data with cost snapshots
     const saleItemsData = cart.map((item) => {
+      const unitCost = saleType === "retail"
+        ? (item.variant.retail_cost ?? item.variant.cost ?? 0)
+        : (item.variant.wholesale_cost_per_ml ?? 0);
+
       if (saleType === "retail") {
+        const lineTotal = item.qty * item.unitPrice;
+        const lineCost = item.qty * unitCost;
         return {
           sale_id: sale.id,
           variant_id: item.variant.id,
           quantity: item.qty,
           unit_price: item.unitPrice,
-          subtotal: item.qty * item.unitPrice,
+          unit_cost: unitCost,
+          line_cost: lineCost,
+          line_profit: lineTotal - lineCost,
+          subtotal: lineTotal,
+          perfume_ml_sold: item.qty * item.variant.size_ml,
+          bottle_qty_sold: item.qty,
+          product_name_snapshot: item.productName,
+          variant_size_ml_snapshot: item.variant.size_ml,
+          wholesale_ml_sold: 0,
         };
       }
       const ml = item.wholesaleMl || 0;
+      const lineTotal = ml * item.unitPrice;
+      const lineCost = ml * unitCost;
       return {
         sale_id: sale.id,
         variant_id: item.variant.id,
         quantity: Math.ceil(ml / item.variant.size_ml) || 1,
         unit_price: item.unitPrice,
-        subtotal: ml * item.unitPrice,
+        unit_cost: unitCost,
+        line_cost: lineCost,
+        line_profit: lineTotal - lineCost,
+        subtotal: lineTotal,
+        perfume_ml_sold: ml,
+        bottle_qty_sold: item.bottleQty || 0,
+        product_name_snapshot: item.productName,
+        variant_size_ml_snapshot: item.variant.size_ml,
+        wholesale_ml_sold: ml,
       };
     });
 

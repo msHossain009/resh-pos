@@ -18,13 +18,13 @@ import { Separator } from "@/components/ui/separator";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { formatCurrency, formatDateFull } from "@/lib/utils";
+import { formatCurrency, formatDateFull, downloadCSV } from "@/lib/utils";
 import { getMembershipTier, MEMBERSHIP_TIERS } from "@/lib/types";
 import { CUSTOMER_TYPES } from "@/lib/constants";
 import { can } from "@/lib/helpers";
 import { useProfile } from "@/lib/profile-context";
 import type { Customer } from "@/lib/types";
-import { Plus, Pencil, Search, Gift } from "lucide-react";
+import { Plus, Pencil, Search, Gift, Download } from "lucide-react";
 import toast from "react-hot-toast";
 
 export default function CustomersPage() {
@@ -156,6 +156,17 @@ export default function CustomersPage() {
       .reduce((sum, s) => sum + Number(s.total || 0) - Number(s.paid_amount || 0), 0);
   };
 
+  const handleExport = () => {
+    const headers = ["Name", "Email", "Phone", "Type", "Loyalty Points", "Total Spent", "Due", "Barcode ID"];
+    const rows = customers.map((c) => [
+      c.name, c.email || "", c.phone || "", c.customer_type || "retail",
+      String(c.loyalty_points || 0), String(c.total_spent || 0),
+      String(getDueAmount(c.id)), c.barcode_id || "",
+    ]);
+    downloadCSV(`customers-${new Date().toISOString().split("T")[0]}.csv`, headers, rows);
+    toast.success("CSV exported");
+  };
+
   const filtered = customers.filter((c) =>
     c.name.toLowerCase().includes(search.toLowerCase()) ||
     c.email?.toLowerCase().includes(search.toLowerCase()) ||
@@ -170,9 +181,14 @@ export default function CustomersPage() {
           <h1 className="text-2xl font-bold tracking-tight">Customers</h1>
           <p className="text-sm text-muted-foreground">Manage your customer relationships and loyalty.</p>
         </div>
-        <Button variant="gold" onClick={() => { resetForm(); setShowDialog(true); }}>
-          <Plus className="h-4 w-4" /> Add Customer
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleExport}>
+            <Download className="h-4 w-4 mr-1" /> Export CSV
+          </Button>
+          <Button variant="gold" onClick={() => { resetForm(); setShowDialog(true); }}>
+            <Plus className="h-4 w-4" /> Add Customer
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">

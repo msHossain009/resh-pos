@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { formatCurrency } from "@/lib/utils";
 import {
   ShoppingCart, Package, Users, AlertTriangle, DollarSign,
-  BarChart3, Truck, Receipt, TrendingUp, TrendingDown, FlaskConical, BottleWine,
+  BarChart3, Truck, Receipt, TrendingUp, TrendingDown, FlaskConical, BottleWine, Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -51,13 +56,71 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
 
+  // Filters
+  const [filterDateRange, setFilterDateRange] = useState("today");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const [filterCustomer, setFilterCustomer] = useState("");
+  const [filterCustomerType, setFilterCustomerType] = useState("");
+  const [filterSaleType, setFilterSaleType] = useState("");
+  const [filterOrderType, setFilterOrderType] = useState("");
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [customers, setCustomers] = useState<{ id: string; name: string; customer_type?: string }[]>([]);
+
+  const getFilterRange = useCallback(() => {
+    const now = new Date();
+    let from: Date;
+    if (filterDateRange === "custom" && customFrom) {
+      return { from: new Date(customFrom), to: customTo ? new Date(customTo) : now };
+    }
+    if (filterDateRange === "this_month") {
+      from = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else if (filterDateRange === "this_week") {
+      const day = now.getDay();
+      from = new Date(now);
+      from.setDate(now.getDate() - day);
+    } else if (filterDateRange === "7days") {
+      from = new Date(now);
+      from.setDate(now.getDate() - 7);
+    } else if (filterDateRange === "30days") {
+      from = new Date(now);
+      from.setDate(now.getDate() - 30);
+    } else {
+      // today
+      from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    }
+    return { from, to: now };
+  }, [filterDateRange, customFrom, customTo]);
+
   useEffect(() => {
     (async () => {
       try {
+        // Load customers for filter
+        const { data: custData } = await supabase.from("customers").select("id, name, customer_type").order("name");
+        if (custData) setCustomers(custData);
+
+        const { from, to } = getFilterRange();
+        const fromStr = from.toISOString();
+        const toStr = to.toISOString();
         const today = new Date().toISOString().split("T")[0];
         const monthStart = new Date();
         monthStart.setDate(1);
         const monthStr = monthStart.toISOString();
+
+        // Today sales still use today's date for the "Today's Sales" card
+        let todaySalesQuery = supabase
+          .from("sales")
+          .select("id, total, subtotal, discount, sale_items(variant_id, quantity, product_variants(cost, retail_cost, cost))")
+          .gte("created_at", today);
+        if (filterCustomerType && filterCustomerType !== "all") todaySalesQuery = todaySalesQuery.eq("sale_type", filterCustomerType);
+
+        let monthSalesQuery = supabase.from("sales").select("total").gte("created_at", monthStr);
+        if (filterCustomer && filterCustomer !== "all") monthSalesQuery = monthSalesQuery.eq("customer_id", filterCustomer);
+        if (filterCustomerType && filterCustomerType !== "all") monthSalesQuery = monthSalesQuery.eq("sale_type", filterCustomerType);
+        if (filterSaleType && filterSaleType !== "all") monthSalesQuery = monthSalesQuery.eq("sale_type", filterSaleType);
+        if (filterOrderType && filterOrderType !== "all") monthSalesQuery = monthSalesQuery.eq("order_type", filterOrderType);
+
+        const expensesQuery = supabase.from("expenses").select("amount").gte("created_at", monthStr);
 
         const [
           productsCount, customersCount,
@@ -74,13 +137,15 @@ export default function Dashboard() {
           supabase.from("product_variants").select("id, products(name)").lte("stock_ml", 0).limit(100),
           supabase.from("product_variants").select("id, products(name)").lt("bottle_stock_qty", 10).gt("bottle_stock_qty", 0).limit(100),
           supabase.from("product_variants").select("id, products(name)").lte("bottle_stock_qty", 0).limit(100),
-          supabase.from("sales").select("id, total, subtotal, discount, sale_items(variant_id, quantity, product_variants(cost))").gte("created_at", today),
-          supabase.from("sales").select("total").gte("created_at", monthStr),
-          supabase.from("expenses").select("amount").gte("created_at", monthStr),
-          supabase.from("sales").select("id, invoice_no, total, payment_status, payment_method, created_at, customers(name)").order("created_at", { ascending: false }).limit(5),
+          todaySalesQuery,
+          monthSalesQuery,
+          expensesQuery,
+          supabase.from("sales").select("id, invoice_no, total, payment_status, payment_method, created_at, customers(name)")
+            .gte("created_at", fromStr).lte("created_at", toStr)
+            .order("created_at", { ascending: false }).limit(5),
           supabase.from("sales").select("id, total").neq("payment_status", "Paid").limit(100),
           supabase.from("purchase_orders").select("id, po_number").eq("status", "Pending").limit(20),
-          supabase.from("sales").select("created_at, total").gte("created_at", new Date(Date.now() - 7 * 86400000).toISOString()).order("created_at"),
+          supabase.from("sales").select("created_at, total").gte("created_at", fromStr).lte("created_at", toStr).order("created_at"),
         ]);
 
         let todayCogs = 0;
@@ -128,7 +193,7 @@ export default function Dashboard() {
         setLoading(false);
       }
     })();
-  }, [supabase]);
+  }, [supabase, getFilterRange, filterCustomer, filterCustomerType, filterSaleType, filterOrderType, refreshTrigger]);
 
   if (loading) {
     return (
@@ -151,6 +216,89 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Dashboard Filters */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm">Filters</CardTitle>
+            <Button variant="ghost" size="sm" onClick={() => {
+              setFilterDateRange("today"); setFilterCustomer(""); setFilterCustomerType("");
+              setFilterSaleType(""); setFilterOrderType("");
+            }}>Clear</Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-3 items-end">
+            <div className="space-y-1">
+              <Label className="text-xs">Date Range</Label>
+              <Select value={filterDateRange} onValueChange={setFilterDateRange}>
+                <SelectTrigger className="h-9 w-32"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="today">Today</SelectItem>
+                  <SelectItem value="this_week">This Week</SelectItem>
+                  <SelectItem value="this_month">This Month</SelectItem>
+                  <SelectItem value="7days">Last 7 Days</SelectItem>
+                  <SelectItem value="30days">Last 30 Days</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {filterDateRange === "custom" && (
+              <>
+                <div className="space-y-1"><Label className="text-xs">From</Label><Input type="date" className="h-9 w-36" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} /></div>
+                <div className="space-y-1"><Label className="text-xs">To</Label><Input type="date" className="h-9 w-36" value={customTo} onChange={(e) => setCustomTo(e.target.value)} /></div>
+              </>
+            )}
+            <div className="space-y-1">
+              <Label className="text-xs">Customer</Label>
+              <Select value={filterCustomer} onValueChange={setFilterCustomer}>
+                <SelectTrigger className="h-9 w-36"><SelectValue placeholder="All" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  {customers.map((c) => (<SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Customer Type</Label>
+              <Select value={filterCustomerType} onValueChange={setFilterCustomerType}>
+                <SelectTrigger className="h-9 w-32"><SelectValue placeholder="All" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="retail">Retail</SelectItem>
+                  <SelectItem value="wholesale">Wholesale</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Sale Type</Label>
+              <Select value={filterSaleType} onValueChange={setFilterSaleType}>
+                <SelectTrigger className="h-9 w-28"><SelectValue placeholder="All" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="retail">Retail</SelectItem>
+                  <SelectItem value="wholesale">Wholesale</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Order Type</Label>
+              <Select value={filterOrderType} onValueChange={setFilterOrderType}>
+                <SelectTrigger className="h-9 w-28"><SelectValue placeholder="All" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="Offline">Offline</SelectItem>
+                  <SelectItem value="Online">Online</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button variant="secondary" size="sm" className="h-9" onClick={() => setRefreshTrigger(t => t + 1)}>
+              <Search className="h-4 w-4 mr-1" /> Apply
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Alerts */}
       {alerts.length > 0 && (
         <div className="space-y-2">

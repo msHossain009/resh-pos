@@ -18,11 +18,11 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, downloadCSV } from "@/lib/utils";
 import { getCurrentUserId, can } from "@/lib/helpers";
 import { useProfile } from "@/lib/profile-context";
 import type { Supplier, PurchaseOrderItem, Variant } from "@/lib/types";
-import { Plus, Pencil, Search, Eye, XCircle, Package } from "lucide-react";
+import { Plus, Pencil, Search, Eye, XCircle, Package, Download } from "lucide-react";
 import toast from "react-hot-toast";
 
 interface PurchaseOrderRow {
@@ -233,23 +233,37 @@ export default function SuppliersPage() {
       // Get variant
       const poiItem = poDetailItems.find((p) => p.id === item.id);
       if (poiItem) {
-        const prevQty = poiItem.product_variants?.stock_quantity || 0;
-        const newQty = prevQty + receiveQty;
+        const v = poiItem.product_variants;
+        const prevStockMl = v?.stock_ml || 0;
+        const prevBottleQty = v?.bottle_stock_qty || 0;
+        const newStockMl = prevStockMl + receiveQty * (v?.size_ml || 0);
+        const newBottleQty = prevBottleQty + receiveQty;
 
-        // Increase stock
-        await supabase.from("product_variants").update({ stock_quantity: newQty }).eq("id", poiItem.variant_id);
+        // Increase stock (ml + bottles)
+        await supabase.from("product_variants").update({
+          stock_ml: newStockMl,
+          stock_quantity: Math.round(newStockMl),
+          bottle_stock_qty: newBottleQty,
+        }).eq("id", poiItem.variant_id);
 
         // Record stock movement
+        const userId = await getCurrentUserId();
         await supabase.from("stock_movements").insert({
           variant_id: poiItem.variant_id,
           type: "purchase_receive",
           quantity_change: receiveQty,
-          previous_quantity: prevQty,
-          new_quantity: newQty,
+          previous_quantity: Math.round(prevStockMl),
+          new_quantity: Math.round(newStockMl),
+          perfume_ml_change: newStockMl - prevStockMl,
+          bottle_qty_change: receiveQty,
+          previous_perfume_ml: prevStockMl,
+          new_perfume_ml: newStockMl,
+          previous_bottle_qty: prevBottleQty,
+          new_bottle_qty: newBottleQty,
           reason: `PO ${po.po_number} receive`,
           reference_type: "purchase_order",
           reference_id: po.id,
-          created_by: await getCurrentUserId(),
+          created_by: userId,
         });
       }
     }
@@ -272,6 +286,26 @@ export default function SuppliersPage() {
     if (error) { toast.error("Failed to cancel"); return; }
     toast.success("PO cancelled");
     fetchData();
+  };
+
+  // CSV Export
+  const handleExportSuppliers = () => {
+    const headers = ["Name", "Contact Person", "Phone", "Email", "Address"];
+    const rows = filteredSuppliers.map((s) => [
+      s.name, s.contact_person || "", s.phone || "", s.email || "", s.address || "",
+    ]);
+    downloadCSV(`suppliers-${new Date().toISOString().split("T")[0]}.csv`, headers, rows);
+    toast.success("CSV exported");
+  };
+
+  const handleExportPOs = () => {
+    const headers = ["PO #", "Supplier", "Status", "Amount", "Date"];
+    const rows = purchaseOrders.map((po) => [
+      po.po_number, po.suppliers?.name || "", po.status,
+      (po.total_amount || 0).toString(), formatDate(po.created_at),
+    ]);
+    downloadCSV(`purchase-orders-${new Date().toISOString().split("T")[0]}.csv`, headers, rows);
+    toast.success("CSV exported");
   };
 
   // Filter suppliers
@@ -299,6 +333,9 @@ export default function SuppliersPage() {
           <p className="text-sm text-muted-foreground">Manage suppliers and purchase orders.</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={handleExportSuppliers}>
+            <Download className="h-4 w-4 mr-1" /> Export CSV
+          </Button>
           {can(profile?.role, "create") && (
             <Button variant="outline" onClick={() => { setPoItems([]); setPoForm({ supplier_id: "", notes: "" }); setShowPO(true); }}>
               <Plus className="h-4 w-4" /> New PO
@@ -359,7 +396,14 @@ export default function SuppliersPage() {
 
       {/* Purchase Orders */}
       <Card>
-        <CardHeader><CardTitle>Purchase Orders</CardTitle></CardHeader>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Purchase Orders</CardTitle>
+            <Button variant="ghost" size="sm" onClick={handleExportPOs}>
+              <Download className="h-4 w-4 mr-1" /> Export CSV
+            </Button>
+          </div>
+        </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>

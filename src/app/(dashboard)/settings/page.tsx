@@ -7,9 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { APP_NAME } from "@/lib/constants";
 import { useTheme } from "next-themes";
-import { can } from "@/lib/helpers";
+import { can, addDemoData, removeDemoData } from "@/lib/helpers";
 import { useProfile } from "@/lib/profile-context";
-import { Moon, Sun, Save, Download, Loader2 } from "lucide-react";
+import { Moon, Sun, Save, Download, Loader2, Plus, Trash2, RefreshCw } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import toast from "react-hot-toast";
 
@@ -192,6 +192,74 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Demo Data */}
+      {can(profile?.role, "manage_settings") && (
+        <Card>
+          <CardHeader><CardTitle>Demo Data</CardTitle>
+            <CardDescription>Add sample data for testing and visualization. Safely removable.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Add sample products (5-7 with variants), customers, suppliers, and expenses to test the app.
+              Demo records are marked with <code>is_demo = true</code> and can be safely removed.
+            </p>
+            <div className="flex gap-3">
+              <Button variant="outline" className="gap-2" onClick={async () => {
+                const btn = document.activeElement as HTMLButtonElement;
+                btn.disabled = true;
+                btn.innerHTML = 'Adding...';
+                const result = await addDemoData();
+                if (result.success) {
+                  toast.success(result.message);
+                } else {
+                  toast.error(result.message);
+                }
+                btn.disabled = false;
+                btn.innerHTML = '<svg class="h-4 w-4" ...>Add Demo Data';
+              }}>
+                <Plus className="h-4 w-4" /> Add Demo Data
+              </Button>
+              <Button variant="gold" className="gap-2" onClick={async () => {
+                if (!confirm("Reset all demo data? This will remove and re-add all demo records.")) return;
+                const btn = document.activeElement as HTMLButtonElement;
+                btn.disabled = true;
+                btn.innerHTML = 'Resetting...';
+                const remove = await removeDemoData();
+                if (!remove.success) {
+                  toast.error("Failed to remove existing demo data: " + remove.message);
+                  btn.disabled = false;
+                  btn.innerHTML = 'Reset Demo Data';
+                  return;
+                }
+                const add = await addDemoData();
+                if (add.success) {
+                  toast.success("Demo data reset successfully: " + add.message);
+                } else {
+                  toast.error("Failed to add demo data: " + add.message);
+                }
+                btn.disabled = false;
+              }}>
+                <RefreshCw className="h-4 w-4" /> Reset Demo Data
+              </Button>
+              <Button variant="destructive" className="gap-2" onClick={async () => {
+                if (!confirm("Remove ALL demo data? This will delete all records marked as demo data.")) return;
+                const btn = document.activeElement as HTMLButtonElement;
+                btn.disabled = true;
+                const result = await removeDemoData();
+                if (result.success) {
+                  toast.success(result.message);
+                } else {
+                  toast.error(result.message);
+                }
+                btn.disabled = false;
+              }}>
+                <Trash2 className="h-4 w-4" /> Remove Demo Data
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="flex gap-3">
         {can(profile?.role, "manage_settings") && (
