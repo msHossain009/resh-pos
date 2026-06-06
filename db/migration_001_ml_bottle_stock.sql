@@ -114,6 +114,45 @@ CREATE TABLE IF NOT EXISTS stock_movements (
 );
 
 -- ============================================================
+-- 0. Ensure all columns from CREATE TABLE IF NOT EXISTS exist
+-- (Needed because CREATE TABLE IF NOT EXISTS skips adding columns
+--  when the table already exists)
+-- ============================================================
+ALTER TABLE products ADD COLUMN IF NOT EXISTS barcode TEXT;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES categories(id);
+
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(12,2) DEFAULT 0;
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS due_amount NUMERIC(12,2) DEFAULT 0;
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS tax_rate NUMERIC DEFAULT 0;
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(12,2) DEFAULT 0;
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_type TEXT DEFAULT 'amount';
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES auth.users(id);
+
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS barcode_id TEXT;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS loyalty_points INTEGER DEFAULT 0;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS total_spent NUMERIC(12,2) DEFAULT 0;
+
+ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS barcode TEXT;
+ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS sku TEXT;
+ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE;
+
+-- Set defaults for any NULL barcodes before adding UNIQUE constraints
+UPDATE products SET barcode = 'PRD-' || LPAD(NEXTVAL('product_seq')::TEXT, 4, '0') WHERE barcode IS NULL;
+UPDATE customers SET barcode_id = 'CST-' || LPAD(NEXTVAL('customer_seq')::TEXT, 4, '0') WHERE barcode_id IS NULL;
+UPDATE product_variants SET barcode = 'VAR-' || LPAD(NEXTVAL('variant_seq')::TEXT, 4, '0') WHERE barcode IS NULL;
+UPDATE product_variants SET sku = 'VAR-' || LPAD(NEXTVAL('variant_seq')::TEXT, 4, '0') WHERE sku IS NULL;
+
+-- Now add UNIQUE constraints (separate from ADD COLUMN to avoid timing issues)
+ALTER TABLE products DROP CONSTRAINT IF EXISTS products_barcode_key;
+ALTER TABLE products ADD UNIQUE (barcode);
+ALTER TABLE customers DROP CONSTRAINT IF EXISTS customers_barcode_id_key;
+ALTER TABLE customers ADD UNIQUE (barcode_id);
+ALTER TABLE product_variants DROP CONSTRAINT IF EXISTS product_variants_barcode_key;
+ALTER TABLE product_variants ADD UNIQUE (barcode);
+ALTER TABLE product_variants DROP CONSTRAINT IF EXISTS product_variants_sku_key;
+ALTER TABLE product_variants ADD UNIQUE (sku);
+
+-- ============================================================
 -- 1. product_variants: Add ml/bottle stock and wholesale fields
 -- ============================================================
 ALTER TABLE product_variants

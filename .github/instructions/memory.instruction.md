@@ -131,6 +131,38 @@ Perfume/attar POS web app: Next.js 16, TypeScript, Supabase, Tailwind 4, Radix U
 - npm run lint: 0 errors, 0 warnings
 - npm run build: passes, 12 routes, 0 errors
 
-## Pending
-- Run migrations in ANY order: `migration_001` → `migration_002` → `migration_003` (each is self-contained)
-- Test all features end-to-end with real data
+## Connected Supabase
+- Project ref: `vvyxgozocdgxxpfmwonj`
+- Supabase CLI linked and logged in with PAT
+- All 3 migrations successfully executed on the remote database
+- `.env.local` configured with real project URL + anon key (kept in .gitignore)
+- Supabase project directory initialized at `F:\resh-pos\supabase/`
+
+## Completed (This Session — Supabase setup + E2E testing)
+1. **Configured .env.local** with real Supabase URL and anon key
+2. **Installed Supabase CLI** (v2.105.0) and linked the project
+3. **Fixed migration_001** — Added missing column bootstrap for pre-existing tables:
+   - `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` for all columns that CREARE TABLE IF NOT EXISTS skips
+   - UNIQUE constraints added separately after column creation (avoid timing issues)
+   - NULL barcode/SKU values filled before adding UNIQUE constraints
+4. **Ran all 3 migrations** successfully on the remote Supabase database (0 errors)
+5. **E2E backend test** — 56/56 tests pass (all 15 tables exist, all columns verified)
+6. **Build passes** cleanly (12 routes, 0 lint errors, 0 build errors)
+7. Config check API returns OK
+
+## Migration Fix (Session 4)
+- Columns in CREATE TABLE IF NOT EXISTS are NOT added if table already exists — must use explicit `ALTER TABLE ADD COLUMN IF NOT EXISTS`
+- `ALTER TABLE ... ADD COLUMN ... UNIQUE` can fail — add column first without UNIQUE, update values, then add constraint separately
+- The `scripts/` directory used for temporary tests was cleaned up
+
+## Pending (Browser-based E2E testing)
+- Start dev server (`npm run dev`) and test all pages in browser:
+  - Products: CRUD operations, variant management
+  - Sales/POS: create sale with barcode, cancel sale
+  - Inventory: adjust stock, view risk badges
+  - Customers: add customer with loyalty points
+  - Suppliers: create purchase order, receive
+  - Expenses: CRUD
+  - Reports: verify COGS accuracy
+  - Dashboard: verify KPIs and filters
+  - Settings: add demo data, business info
