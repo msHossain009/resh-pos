@@ -318,24 +318,48 @@ export default function SalesPage() {
 
     if (se || !sale) { toast.error("Failed to create sale"); setSaving(false); return; }
 
-    // Build sale items data
+    // Build sale items data with cost snapshots
     const saleItemsData = cart.map((item) => {
+      const unitCost = saleType === "retail"
+        ? (item.variant.retail_cost ?? item.variant.cost ?? 0)
+        : (item.variant.wholesale_cost_per_ml ?? 0);
+
       if (saleType === "retail") {
+        const lineTotal = item.qty * item.unitPrice;
+        const lineCost = item.qty * unitCost;
         return {
           sale_id: sale.id,
           variant_id: item.variant.id,
           quantity: item.qty,
           unit_price: item.unitPrice,
-          subtotal: item.qty * item.unitPrice,
+          unit_cost: unitCost,
+          line_cost: lineCost,
+          line_profit: lineTotal - lineCost,
+          subtotal: lineTotal,
+          perfume_ml_sold: item.qty * item.variant.size_ml,
+          bottle_qty_sold: item.qty,
+          product_name_snapshot: item.productName,
+          variant_size_ml_snapshot: item.variant.size_ml,
+          wholesale_ml_sold: 0,
         };
       }
       const ml = item.wholesaleMl || 0;
+      const lineTotal = ml * item.unitPrice;
+      const lineCost = ml * unitCost;
       return {
         sale_id: sale.id,
         variant_id: item.variant.id,
         quantity: Math.ceil(ml / item.variant.size_ml) || 1,
         unit_price: item.unitPrice,
-        subtotal: ml * item.unitPrice,
+        unit_cost: unitCost,
+        line_cost: lineCost,
+        line_profit: lineTotal - lineCost,
+        subtotal: lineTotal,
+        perfume_ml_sold: ml,
+        bottle_qty_sold: item.bottleQty || 0,
+        product_name_snapshot: item.productName,
+        variant_size_ml_snapshot: item.variant.size_ml,
+        wholesale_ml_sold: ml,
       };
     });
 

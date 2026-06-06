@@ -88,6 +88,15 @@ export interface SaleItem {
   unit_price: number;
   subtotal: number;
   created_at: string;
+  // New cost/ML snapshot fields
+  unit_cost: number;
+  line_cost: number;
+  line_profit: number;
+  perfume_ml_sold: number;
+  bottle_qty_sold: number;
+  wholesale_ml_sold: number;
+  product_name_snapshot: string;
+  variant_size_ml_snapshot: number;
   product_variants?: Variant;
 }
 
