@@ -185,6 +185,7 @@ export interface BusinessSettings {
 export interface UserProfile {
   id: string;
   full_name: string | null;
+  email: string | null;
   role: "admin" | "manager" | "cashier" | "viewer";
   active: boolean;
   created_at: string;

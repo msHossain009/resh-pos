@@ -24,12 +24,32 @@ export function LoginForm() {
     setLoading(true);
     setError("");
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       setError(error.message);
       setLoading(false);
       return;
     }
+
+    // Ensure profile exists after login (handles pre-trigger users)
+    if (data?.user) {
+      const { data: existing } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("id", data.user.id)
+        .maybeSingle();
+
+      if (!existing) {
+        await supabase.from("profiles").upsert({
+          id: data.user.id,
+          full_name: data.user.email || email,
+          email: email,
+          role: "cashier",
+          active: true,
+        }).maybeSingle();
+      }
+    }
+
     router.push("/");
     router.refresh();
   };
