@@ -18,6 +18,7 @@ import {
   Receipt,
   FileText,
   Undo2,
+  Shield,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -32,6 +33,7 @@ const navItems = [
   { href: "/suppliers", icon: Truck, label: "Suppliers" },
   { href: "/expenses", icon: Receipt, label: "Expenses" },
   { href: "/reports", icon: BarChart3, label: "Reports" },
+  { href: "/admin/users", icon: Shield, label: "Admin" },
   { href: "/settings", icon: Settings, label: "Settings" },
 ];
 
