@@ -103,9 +103,6 @@ export default function Dashboard() {
         const fromStr = from.toISOString();
         const toStr = to.toISOString();
         const today = new Date().toISOString().split("T")[0];
-        const monthStart = new Date();
-        monthStart.setDate(1);
-        const monthStr = monthStart.toISOString();
 
         // Today sales still use today's date for the "Today's Sales" card
         let todaySalesQuery = supabase
@@ -114,20 +111,21 @@ export default function Dashboard() {
           .gte("created_at", today);
         if (filterCustomerType && filterCustomerType !== "all") todaySalesQuery = todaySalesQuery.eq("sale_type", filterCustomerType);
 
-        let monthSalesQuery = supabase.from("sales").select("total").gte("created_at", monthStr);
-        if (filterCustomer && filterCustomer !== "all") monthSalesQuery = monthSalesQuery.eq("customer_id", filterCustomer);
-        if (filterCustomerType && filterCustomerType !== "all") monthSalesQuery = monthSalesQuery.eq("sale_type", filterCustomerType);
-        if (filterSaleType && filterSaleType !== "all") monthSalesQuery = monthSalesQuery.eq("sale_type", filterSaleType);
-        if (filterOrderType && filterOrderType !== "all") monthSalesQuery = monthSalesQuery.eq("order_type", filterOrderType);
+        // Revenue/profit queries now respect the selected date range filter
+        let rangeSalesQuery = supabase.from("sales").select("total").gte("created_at", fromStr).lte("created_at", toStr);
+        if (filterCustomer && filterCustomer !== "all") rangeSalesQuery = rangeSalesQuery.eq("customer_id", filterCustomer);
+        if (filterCustomerType && filterCustomerType !== "all") rangeSalesQuery = rangeSalesQuery.eq("sale_type", filterCustomerType);
+        if (filterSaleType && filterSaleType !== "all") rangeSalesQuery = rangeSalesQuery.eq("sale_type", filterSaleType);
+        if (filterOrderType && filterOrderType !== "all") rangeSalesQuery = rangeSalesQuery.eq("order_type", filterOrderType);
 
-        const expensesQuery = supabase.from("expenses").select("amount").gte("created_at", monthStr);
+        const expensesQuery = supabase.from("expenses").select("amount").gte("created_at", fromStr).lte("created_at", toStr);
 
         const [
           productsCount, customersCount,
           { data: lowPerfume }, { data: outPerfume },
           { data: lowBottle }, { data: outBottle },
-          { data: todaySales }, { data: monthSales },
-          { data: monthExpenses }, { data: recentSales },
+          { data: todaySales }, { data: rangeSales },
+          { data: rangeExpenses }, { data: recentSales },
           { data: dueSales }, { data: pendingPOs },
           { data: last7Sales },
         ] = await Promise.all([
@@ -138,7 +136,7 @@ export default function Dashboard() {
           supabase.from("product_variants").select("id, products(name)").lt("bottle_stock_qty", 10).gt("bottle_stock_qty", 0).limit(100),
           supabase.from("product_variants").select("id, products(name)").lte("bottle_stock_qty", 0).limit(100),
           todaySalesQuery,
-          monthSalesQuery,
+          rangeSalesQuery,
           expensesQuery,
           supabase.from("sales").select("id, invoice_no, total, payment_status, payment_method, created_at, customers(name)")
             .gte("created_at", fromStr).lte("created_at", toStr)
@@ -164,8 +162,8 @@ export default function Dashboard() {
           }
         }
 
-        const monthRevenue = monthSales?.reduce((s: number, r: { total: number }) => s + Number(r.total), 0) || 0;
-        const monthExpTotal = monthExpenses?.reduce((s: number, e: { amount: number }) => s + Number(e.amount), 0) || 0;
+        const monthRevenue = rangeSales?.reduce((s: number, r: { total: number }) => s + Number(r.total), 0) || 0;
+        const monthExpTotal = rangeExpenses?.reduce((s: number, e: { amount: number }) => s + Number(e.amount), 0) || 0;
         const totalDue = dueSales?.reduce((s: number, d: { total: number }) => s + Number(d.total), 0) || 0;
 
         const dayMap: Record<string, number> = {};
@@ -346,7 +344,7 @@ export default function Dashboard() {
 
         <Card className="border-l-4 border-l-blue-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">This Month Revenue</CardTitle>
+            <CardTitle className="text-sm font-medium">Filtered Revenue</CardTitle>
             <div className="p-2 rounded-lg bg-blue-500/10"><BarChart3 className="h-5 w-5 text-blue-500" /></div>
           </CardHeader>
           <CardContent>

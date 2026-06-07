@@ -24,7 +24,7 @@ export function SignupForm() {
     setLoading(true);
     setError("");
 
-    const { error } = await supabase.auth.signUp({
+    const { data: signUpData, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -36,6 +36,18 @@ export function SignupForm() {
       setError(error.message);
       setLoading(false);
       return;
+    }
+
+    // If user was created immediately, create profile as fallback
+    // (the DB trigger handle_new_user should also do this)
+    if (signUpData?.user) {
+      await supabase.from("profiles").upsert({
+        id: signUpData.user.id,
+        full_name: name,
+        email: email,
+        role: "cashier",
+        active: true,
+      }).maybeSingle();
     }
 
     setSuccess(true);

@@ -155,14 +155,28 @@ Perfume/attar POS web app: Next.js 16, TypeScript, Supabase, Tailwind 4, Radix U
 - `ALTER TABLE ... ADD COLUMN ... UNIQUE` can fail — add column first without UNIQUE, update values, then add constraint separately
 - The `scripts/` directory used for temporary tests was cleaned up
 
-## Pending (Browser-based E2E testing)
-- Start dev server (`npm run dev`) and test all pages in browser:
-  - Products: CRUD operations, variant management
-  - Sales/POS: create sale with barcode, cancel sale
-  - Inventory: adjust stock, view risk badges
-  - Customers: add customer with loyalty points
-  - Suppliers: create purchase order, receive
-  - Expenses: CRUD
-  - Reports: verify COGS accuracy
-  - Dashboard: verify KPIs and filters
-  - Settings: add demo data, business info
+## Migration 004 — Auth/Profile/RLS Fixes (Session 5 — PR #1)
+- Created `db/migration_004_auth_profiles_rls_fix.sql` to:
+  1. Add `email` column to `profiles` table
+  2. Create `handle_new_user()` trigger on `auth.users` INSERT — auto-creates profile row
+  3. Backfill existing auth users without a profile row
+  4. Add fallback RLS policies using `is_authenticated()` helper — allows basic cashier-level access even when no profile exists
+  5. Fix `get_user_role()` to return `'cashier'` instead of NULL when no profile exists (prevents all INSERT/UPDATE policies from blocking)
+- Updated `UserProfile` type to include `email` field
+- Fixed `ProfileContext` (`profile-context.tsx`) to auto-create a default profile if missing on login
+- Fixed `signup-form.tsx` to upsert a profile row after successful signup (client-side fallback)
+- Fixed `login-form.tsx` to ensure profile exists after successful login
+- Fixed dashboard monthRevenue/expenses queries to respect the selected date range filter instead of always using the current month
+- Dashboard card title changed from "This Month Revenue" to "Filtered Revenue"
+
+## Key Learnings
+- `maybeSingle()` returns `{ data: null }` when no row found (not an error) — use for optional existence checks
+- `auth.users` trigger requires `SECURITY DEFINER SET search_path = ''` to avoid infinite recursion
+- `get_user_role()` returning NULL breaks ALL role-based policies — always provide a fallback default
+- Dashboard filter queries must all use the same date range (`fromStr`/`toStr`) for consistency
+
+## Pending (for future PRs)
+- Phase 4: Dashboard alert banners → notification bell/toast system
+- Phase 6: Column-wise CSV exports for all major pages
+- Phase 7: Demo data management UI improvements
+- Phase 8: Full E2E browser testing
