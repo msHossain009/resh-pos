@@ -129,26 +129,29 @@ Perfume/attar POS web app: Next.js 16, TypeScript, Supabase, Tailwind 4, Radix U
 
 ## Build Status
 - npm run lint: 0 errors, 0 warnings
-- npm run build: passes, 12 routes, 0 errors
+- npm run build: passes, 14 routes, 0 errors
 
 ## Connected Supabase
 - Project ref: `vvyxgozocdgxxpfmwonj`
 - Supabase CLI linked and logged in with PAT
-- All 3 migrations successfully executed on the remote database
+- All 5 migrations (001-005) successfully executed on the remote database
 - `.env.local` configured with real project URL + anon key (kept in .gitignore)
 - Supabase project directory initialized at `F:\resh-pos\supabase/`
 
-## Completed (This Session — Supabase setup + E2E testing)
+## Completed (Session — Supabase setup + E2E testing)
 1. **Configured .env.local** with real Supabase URL and anon key
 2. **Installed Supabase CLI** (v2.105.0) and linked the project
-3. **Fixed migration_001** — Added missing column bootstrap for pre-existing tables:
-   - `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` for all columns that CREARE TABLE IF NOT EXISTS skips
-   - UNIQUE constraints added separately after column creation (avoid timing issues)
-   - NULL barcode/SKU values filled before adding UNIQUE constraints
-4. **Ran all 3 migrations** successfully on the remote Supabase database (0 errors)
-5. **E2E backend test** — 56/56 tests pass (all 15 tables exist, all columns verified)
+3. **Fixed migration_001** — Added missing column bootstrap for pre-existing tables
+4. **Ran migrations 001-003** successfully on the remote Supabase database
+5. **E2E backend test** — 56/56 tests pass
 6. **Build passes** cleanly (12 routes, 0 lint errors, 0 build errors)
 7. Config check API returns OK
+
+## Completed (Session — All 5 migrations applied, lint & build clean)
+1. **Applied migration 004** (auth profiles RLS fix) to remote Supabase — adds `email` column to `profiles`, auto-creates profile on signup trigger, backfill, fallback RLS policies, fixes `get_user_role()` to return `'cashier'` default
+2. **Applied migration 005** (sales returns) to remote Supabase — adds `returned_quantity` to `sale_items`, `return_reason` and `last_returned_at` to `sales`, performance indexes
+3. **Verified** all columns present in remote database
+4. **Build clean** — 14 routes, 0 lint errors, 0 build errors
 
 ## Migration Fix (Session 4)
 - Columns in CREATE TABLE IF NOT EXISTS are NOT added if table already exists — must use explicit `ALTER TABLE ADD COLUMN IF NOT EXISTS`
@@ -175,7 +178,15 @@ Perfume/attar POS web app: Next.js 16, TypeScript, Supabase, Tailwind 4, Radix U
 - `get_user_role()` returning NULL breaks ALL role-based policies — always provide a fallback default
 - Dashboard filter queries must all use the same date range (`fromStr`/`toStr`) for consistency
 
-## Pending (for future PRs)
+## Migration 005 — Sales Returns (Session)
+- Created `db/migration_005_sales_returns.sql` to:
+  1. Add `returned_quantity INTEGER DEFAULT 0` to `sale_items` for tracking partial returns
+  2. Add `return_reason TEXT` to `sales` for cancellation/refund reasons
+  3. Add `last_returned_at TIMESTAMPTZ` to `sales` to track when last return happened
+  4. Add indexes: `idx_sale_items_returned_qty`, `idx_sales_return_reason`
+- Applied to remote Supabase
+
+## Pending
 - Phase 4: Dashboard alert banners → notification bell/toast system
 - Phase 6: Column-wise CSV exports for all major pages
 - Phase 7: Demo data management UI improvements
