@@ -13,6 +13,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { formatCurrency, formatDateFull } from "@/lib/utils";
 import { getCurrentUserId } from "@/lib/helpers";
 import type { Sale, SaleItem, StockMovement } from "@/lib/types";
@@ -320,7 +321,7 @@ export default function StockReturnsPage() {
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={6} className="text-center py-8">Loading...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="text-center"><LoadingSpinner size="sm" /></TableCell></TableRow>
               ) : sales.length === 0 ? (
                 <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No completed sales found.</TableCell></TableRow>
               ) : (

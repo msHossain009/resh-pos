@@ -17,6 +17,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Separator } from "@/components/ui/separator";
 import { formatCurrency, formatDate, downloadCSV } from "@/lib/utils";
 import { getCurrentUserId, can } from "@/lib/helpers";
@@ -374,7 +375,7 @@ export default function SuppliersPage() {
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} className="text-center"><LoadingSpinner size="sm" /></TableCell></TableRow>
               ) : filteredSuppliers.length === 0 ? (
                 <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No suppliers added yet.</TableCell></TableRow>
               ) : (
@@ -423,7 +424,7 @@ export default function SuppliersPage() {
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="text-center"><LoadingSpinner size="sm" /></TableCell></TableRow>
               ) : purchaseOrders.length === 0 ? (
                 <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No purchase orders yet.</TableCell></TableRow>
               ) : (

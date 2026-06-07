@@ -18,7 +18,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
 } from "recharts";
-import { Download, TrendingUp, TrendingDown } from "lucide-react";
+import { Download, TrendingUp, TrendingDown, Search } from "lucide-react";
 import toast from "react-hot-toast";
 
 const COLORS = ["#c9a96e", "#6B2737", "#2D6A4F", "#1a1a2e", "#8B5CF6", "#EC4899", "#F59E0B", "#10B981", "#3B82F6", "#EF4444"];
@@ -360,7 +360,7 @@ export default function ReportsPage() {
               </Select>
             </div>
             <Button variant="secondary" size="sm" className="h-9" onClick={() => setRefreshTrigger(t => t + 1)}>
-              Apply
+              <Search className="h-4 w-4 mr-1" /> Apply
             </Button>
           </div>
         </CardContent>

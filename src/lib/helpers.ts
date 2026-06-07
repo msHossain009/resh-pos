@@ -41,7 +41,7 @@ export async function addDemoData(): Promise<{ success: boolean; message: string
     // 1. Categories
     const cats = ["Floral", "Oriental", "Woody", "Fresh", "Oud", "Citrus"];
     const { data: catData } = await supabase.from("categories").insert(
-      cats.map((c) => ({ name: c })),
+      cats.map((c) => ({ name: c, is_demo: true })),
     ).select();
     if (!catData) throw new Error("Failed to create categories");
 
@@ -170,7 +170,7 @@ export async function addDemoData(): Promise<{ success: boolean; message: string
       if (!po) continue;
 
       await supabase.from("purchase_order_items").insert(
-        poItems.map((i) => ({ ...i, po_id: po.id }))
+        poItems.map((i) => ({ ...i, po_id: po.id, is_demo: true }))
       );
 
       // Record stock movements for received items
@@ -198,6 +198,17 @@ export async function addDemoData(): Promise<{ success: boolean; message: string
             is_demo: true,
             created_at: poDates[pi],
           });
+
+          // Update variant stock
+          const newMl = (v.stock_ml || 0) + receiveMl;
+          const newBottle = (v.bottle_stock_qty || 0) + item.received_quantity;
+          await supabase.from("product_variants").update({
+            stock_ml: newMl,
+            stock_quantity: Math.round(newMl),
+            bottle_stock_qty: newBottle,
+          }).eq("id", item.variant_id);
+          v.stock_ml = newMl;
+          v.bottle_stock_qty = newBottle;
         }
       }
     }
@@ -218,7 +229,7 @@ export async function addDemoData(): Promise<{ success: boolean; message: string
     for (let si = 0; si < 6; si++) {
       const isRetail = si < 4;
       const customer = si < 3 ? retailCust[si % retailCust.length] : (si < 5 ? wsCust[si % wsCust.length] : null);
-      const saleVariants = allVariants.slice((si * 3) % 15, (si * 3 + 4) % 15);
+      const saleVariants = allVariants.slice((si * 3) % allVariants.length, ((si * 3 + 4) % allVariants.length) || allVariants.length);
       if (saleVariants.length === 0) continue;
 
       const items = saleVariants.map((v) => {
@@ -270,7 +281,7 @@ export async function addDemoData(): Promise<{ success: boolean; message: string
       if (!sale) continue;
 
       await supabase.from("sale_items").insert(
-        items.map((i) => ({ ...i, sale_id: sale.id }))
+        items.map((i) => ({ ...i, sale_id: sale.id, is_demo: true }))
       );
 
       allDemoSales.push({

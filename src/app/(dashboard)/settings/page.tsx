@@ -18,6 +18,7 @@ export default function SettingsPage() {
   const { profile } = useProfile();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [demoLoading, setDemoLoading] = useState<'add' | 'reset' | 'remove' | null>(null);
   const supabase = createClient();
   const [business, setBusiness] = useState({
     business_name: APP_NAME,
@@ -205,31 +206,26 @@ export default function SettingsPage() {
               Demo records are marked with <code>is_demo = true</code> and can be safely removed.
             </p>
             <div className="flex gap-3">
-              <Button variant="outline" className="gap-2" onClick={async () => {
-                const btn = document.activeElement as HTMLButtonElement;
-                btn.disabled = true;
-                btn.innerHTML = 'Adding...';
+              <Button variant="outline" className="gap-2" disabled={demoLoading !== null} onClick={async () => {
+                setDemoLoading('add');
                 const result = await addDemoData();
                 if (result.success) {
                   toast.success(result.message);
                 } else {
                   toast.error(result.message);
                 }
-                btn.disabled = false;
-                btn.innerHTML = '<svg class="h-4 w-4" ...>Add Demo Data';
+                setDemoLoading(null);
               }}>
-                <Plus className="h-4 w-4" /> Add Demo Data
+                {demoLoading === 'add' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                {demoLoading === 'add' ? 'Adding...' : 'Add Demo Data'}
               </Button>
-              <Button variant="gold" className="gap-2" onClick={async () => {
+              <Button variant="gold" className="gap-2" disabled={demoLoading !== null} onClick={async () => {
                 if (!confirm("Reset all demo data? This will remove and re-add all demo records.")) return;
-                const btn = document.activeElement as HTMLButtonElement;
-                btn.disabled = true;
-                btn.innerHTML = 'Resetting...';
+                setDemoLoading('reset');
                 const remove = await removeDemoData();
                 if (!remove.success) {
                   toast.error("Failed to remove existing demo data: " + remove.message);
-                  btn.disabled = false;
-                  btn.innerHTML = 'Reset Demo Data';
+                  setDemoLoading(null);
                   return;
                 }
                 const add = await addDemoData();
@@ -238,23 +234,24 @@ export default function SettingsPage() {
                 } else {
                   toast.error("Failed to add demo data: " + add.message);
                 }
-                btn.disabled = false;
+                setDemoLoading(null);
               }}>
-                <RefreshCw className="h-4 w-4" /> Reset Demo Data
+                {demoLoading === 'reset' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                {demoLoading === 'reset' ? 'Resetting...' : 'Reset Demo Data'}
               </Button>
-              <Button variant="destructive" className="gap-2" onClick={async () => {
+              <Button variant="destructive" className="gap-2" disabled={demoLoading !== null} onClick={async () => {
                 if (!confirm("Remove ALL demo data? This will delete all records marked as demo data.")) return;
-                const btn = document.activeElement as HTMLButtonElement;
-                btn.disabled = true;
+                setDemoLoading('remove');
                 const result = await removeDemoData();
                 if (result.success) {
                   toast.success(result.message);
                 } else {
                   toast.error(result.message);
                 }
-                btn.disabled = false;
+                setDemoLoading(null);
               }}>
-                <Trash2 className="h-4 w-4" /> Remove Demo Data
+                {demoLoading === 'remove' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                {demoLoading === 'remove' ? 'Removing...' : 'Remove Demo Data'}
               </Button>
             </div>
           </CardContent>

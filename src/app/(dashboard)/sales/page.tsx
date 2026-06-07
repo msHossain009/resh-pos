@@ -16,6 +16,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Separator } from "@/components/ui/separator";
 import { formatCurrency, formatDateFull, downloadCSV, calculateSaleTotals, validateStockBeforeSale } from "@/lib/utils";
 import { getBusinessSettings, getCurrentUserId } from "@/lib/helpers";
@@ -134,7 +135,7 @@ export default function SalesPage() {
     if (filterOrderType && filterOrderType !== "all") query = query.eq("order_type", filterOrderType);
     if (filterSaleType && filterSaleType !== "all") query = query.eq("sale_type", filterSaleType);
     if (filterStatus && filterStatus !== "all") query = query.eq("status", filterStatus);
-    if (filterInvoice) query = query.ilike("invoice_no", `%${filterInvoice}%`);
+    if (searchInvoice) query = query.ilike("invoice_no", `%${searchInvoice}%`);
 
     const { data } = await query;
     if (data) setSales(data);
@@ -644,10 +645,6 @@ export default function SalesPage() {
               <Input type="date" className="h-9 w-36" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Invoice #</Label>
-              <Input placeholder="Search invoice..." className="h-9 w-36" value={filterInvoice} onChange={(e) => setFilterInvoice(e.target.value)} />
-            </div>
-            <div className="space-y-1">
               <Label className="text-xs">Customer</Label>
               <Select value={filterCustomer} onValueChange={setFilterCustomer}>
                 <SelectTrigger className="h-9 w-44"><SelectValue placeholder="All" /></SelectTrigger>
@@ -733,7 +730,7 @@ export default function SalesPage() {
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={9} className="text-center py-8">Loading...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} className="text-center"><LoadingSpinner size="sm" /></TableCell></TableRow>
               ) : sales.length === 0 ? (
                 <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No sales yet.</TableCell></TableRow>
               ) : (

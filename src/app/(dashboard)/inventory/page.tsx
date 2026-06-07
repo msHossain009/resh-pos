@@ -8,6 +8,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -291,7 +292,7 @@ export default function InventoryPage() {
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={9} className="text-center py-8">Loading...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} className="text-center"><LoadingSpinner size="sm" /></TableCell></TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No inventory items.</TableCell></TableRow>
               ) : (
@@ -386,7 +387,7 @@ export default function InventoryPage() {
             <DialogDescription>{selectedVariant?.products?.name} - {selectedVariant?.size_ml}ml ({selectedVariant?.sku})</DialogDescription>
           </DialogHeader>
           {historyLoading ? (
-            <div className="py-8 text-center text-muted-foreground">Loading...</div>
+            <div className="text-center"><LoadingSpinner size="sm" /></div>
           ) : movements.length === 0 ? (
             <div className="py-8 text-center text-muted-foreground">No movements recorded yet.</div>
           ) : (

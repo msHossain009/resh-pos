@@ -16,6 +16,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Separator } from "@/components/ui/separator";
 import { formatCurrency, formatDateFull, downloadCSV } from "@/lib/utils";
 import { getBusinessSettings } from "@/lib/helpers";
@@ -114,6 +115,25 @@ export default function InvoicesPage() {
     if (data) setSaleItems(data);
     setDetailsLoading(false);
     setShowDetails(true);
+  };
+
+  const printInvoice = async (inv: InvoiceRow) => {
+    const { data } = await supabase
+      .from("sale_items")
+      .select("*, product_variants(*, products(name))")
+      .eq("sale_id", inv.id);
+    if (data) {
+      printReceipt({
+        sale: inv as unknown as Sale,
+        items: data,
+        businessName: settings?.business_name || "Resh POS",
+        tagline: settings?.tagline || "",
+        footer: settings?.receipt_footer || "",
+        cashierName,
+      });
+    } else {
+      toast.error("Failed to load invoice items for printing");
+    }
   };
 
   const clearFilters = () => {
@@ -285,7 +305,7 @@ export default function InvoicesPage() {
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={10} className="text-center py-8">Loading...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={10} className="text-center"><LoadingSpinner size="sm" /></TableCell></TableRow>
               ) : invoices.length === 0 ? (
                 <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No invoices found.</TableCell></TableRow>
               ) : (
@@ -314,18 +334,7 @@ export default function InvoicesPage() {
                         <Button variant="ghost" size="icon" onClick={() => loadInvoiceDetails(inv)}>
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => {
-                          printReceipt({
-                            sale: inv as unknown as Sale,
-                            items: [],
-                            businessName: settings?.business_name || "Resh POS",
-                            tagline: settings?.tagline || "",
-                            footer: settings?.receipt_footer || "",
-                            cashierName,
-                          });
-                          // Need to load items first for a proper receipt
-                          loadInvoiceDetails(inv);
-                        }}>
+                        <Button variant="ghost" size="icon" onClick={() => printInvoice(inv)}>
                           <Printer className="h-4 w-4" />
                         </Button>
                       </div>

@@ -17,13 +17,14 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Separator } from "@/components/ui/separator";
 import { formatCurrency, formatDate, downloadCSV } from "@/lib/utils";
 import { can } from "@/lib/helpers";
 import { useProfile } from "@/lib/profile-context";
 import { DEFAULT_VARIANT_SIZES } from "@/lib/constants";
 import type { Product, Variant } from "@/lib/types";
-import { Plus, Pencil, Search, EyeOff, Download, Wand2, Copy } from "lucide-react";
+import { Plus, Pencil, Search, EyeOff, Download, Wand2, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 
 const CONCENTRATIONS = ["EDP", "EDT", "EDC", "Parfum", "Extrait", "Cologne"] as const;
@@ -420,7 +421,7 @@ export default function ProductsPage() {
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="text-center"><LoadingSpinner size="sm" /></TableCell></TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No products found.</TableCell></TableRow>
               ) : (
@@ -550,7 +551,7 @@ export default function ProductsPage() {
                         <Pencil className="h-4 w-4" />
                       </Button>
                       <Button variant="ghost" size="icon" onClick={() => removeVariant(idx)}>
-                        <Copy className="h-4 w-4 text-destructive rotate-45" />
+                        <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>
                   </div>

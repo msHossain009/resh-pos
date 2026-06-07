@@ -14,6 +14,7 @@ import {
   DialogFooter, DialogClose,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Separator } from "@/components/ui/separator";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -225,7 +226,7 @@ export default function CustomersPage() {
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} className="text-center"><LoadingSpinner size="sm" /></TableCell></TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No customers found.</TableCell></TableRow>
               ) : (
@@ -336,7 +337,7 @@ export default function CustomersPage() {
           </DialogHeader>
 
           {detailsLoading ? (
-            <div className="py-8 text-center text-muted-foreground">Loading...</div>
+            <div className="text-center"><LoadingSpinner size="sm" /></div>
           ) : (
             <div className="grid gap-4">
               <div className="flex gap-2">
