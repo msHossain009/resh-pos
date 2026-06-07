@@ -23,9 +23,10 @@ import { getPrintStyles } from "@/components/receipt/receipt-view";
 import { printReceipt } from "@/components/receipt/receipt-pdf";
 import type { Product, Variant, Customer, Sale, SaleItem, CartItem, BusinessSettings } from "@/lib/types";
 import {
-  Search, Plus, Trash2, Printer, Download, Eye, Barcode, XCircle, ShoppingCart,
+  Search, Plus, Trash2, Printer, Download, Eye, Barcode, XCircle, ShoppingCart, FileText,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import Link from "next/link";
 
 type SaleRow = Omit<Sale, 'sale_items' | 'customers'> & {
   customers: { name: string; customer_type?: string } | null;
@@ -47,6 +48,7 @@ export default function SalesPage() {
   const [filterOrderType, setFilterOrderType] = useState("");
   const [filterSaleType, setFilterSaleType] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
+  const [searchInvoice, setSearchInvoice] = useState("");
 
   // New sale state
   const [showSale, setShowSale] = useState(false);
@@ -124,6 +126,7 @@ export default function SalesPage() {
       .order("created_at", { ascending: false })
       .limit(200);
 
+    if (searchInvoice) query = query.ilike("invoice_no", `%${searchInvoice}%`);
     if (filterDateFrom) query = query.gte("sale_date", filterDateFrom);
     if (filterDateTo) query = query.lte("sale_date", filterDateTo);
     if (filterCustomer && filterCustomer !== "all") query = query.eq("customer_id", filterCustomer);
@@ -135,7 +138,7 @@ export default function SalesPage() {
     const { data } = await query;
     if (data) setSales(data);
     setLoading(false);
-  }, [filterDateFrom, filterDateTo, filterCustomer, filterPaymentMethod, filterOrderType, filterSaleType, filterStatus]);
+  }, [searchInvoice, filterDateFrom, filterDateTo, filterCustomer, filterPaymentMethod, filterOrderType, filterSaleType, filterStatus]);
 
   const loadSaleDetails = async (sale: SaleRow) => {
     setDetailsLoading(true);
@@ -558,7 +561,7 @@ export default function SalesPage() {
   const clearFilters = () => {
     setFilterDateFrom(""); setFilterDateTo(""); setFilterCustomer("");
     setFilterPaymentMethod(""); setFilterOrderType("");
-    setFilterSaleType(""); setFilterStatus("");
+    setFilterSaleType(""); setFilterStatus(""); setSearchInvoice("");
   };
 
   const openNewSale = () => {
@@ -591,9 +594,16 @@ export default function SalesPage() {
           <h1 className="text-2xl font-bold tracking-tight">Sales</h1>
           <p className="text-sm text-muted-foreground">Record and manage sales transactions.</p>
         </div>
-        <Button variant="gold" onClick={openNewSale}>
-          <Plus className="h-4 w-4" /> New Sale
-        </Button>
+        <div className="flex gap-2">
+          <Link href="/invoices">
+            <Button variant="outline">
+              <FileText className="h-4 w-4 mr-1" /> Invoices
+            </Button>
+          </Link>
+          <Button variant="gold" onClick={openNewSale}>
+            <Plus className="h-4 w-4" /> New Sale
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -606,6 +616,10 @@ export default function SalesPage() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-3 items-end">
+            <div className="space-y-1">
+              <Label className="text-xs">Search Invoice</Label>
+              <Input type="text" className="h-9 w-40" placeholder="INV-..." value={searchInvoice} onChange={(e) => setSearchInvoice(e.target.value)} />
+            </div>
             <div className="space-y-1">
               <Label className="text-xs">From</Label>
               <Input type="date" className="h-9 w-40" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} />
@@ -719,9 +733,25 @@ export default function SalesPage() {
                     <TableCell className="text-xs">{sale.payment_method}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{formatDateFull(sale.created_at)}</TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); loadSaleDetails(sale); }}>
-                        <Eye className="h-4 w-4" />
-                      </Button>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); loadSaleDetails(sale); }}>
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={(e) => {
+                          e.stopPropagation();
+                          printReceipt({
+                            sale: sale as unknown as Sale,
+                            items: [],
+                            businessName: settings?.business_name || "Resh POS",
+                            tagline: settings?.tagline || "",
+                            footer: settings?.receipt_footer || "",
+                            cashierName,
+                          });
+                          loadSaleDetails(sale);
+                        }}>
+                          <Printer className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
