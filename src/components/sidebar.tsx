@@ -16,6 +16,8 @@ import {
   Menu,
   X,
   Receipt,
+  FileText,
+  Undo2,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -24,6 +26,8 @@ const navItems = [
   { href: "/products", icon: Package, label: "Products" },
   { href: "/inventory", icon: Warehouse, label: "Inventory" },
   { href: "/sales", icon: ShoppingCart, label: "Sales" },
+  { href: "/invoices", icon: FileText, label: "Invoices" },
+  { href: "/stock-returns", icon: Undo2, label: "Returns" },
   { href: "/customers", icon: Users, label: "Customers" },
   { href: "/suppliers", icon: Truck, label: "Suppliers" },
   { href: "/expenses", icon: Receipt, label: "Expenses" },

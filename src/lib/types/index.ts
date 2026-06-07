@@ -76,6 +76,8 @@ export interface Sale {
   // New fields
   sale_type: "retail" | "wholesale";
   status: "completed" | "cancelled" | "refunded";
+  return_reason: string | null;
+  last_returned_at: string | null;
   customers?: { name: string; customer_type?: string } | null;
   sale_items?: SaleItem[];
 }
@@ -95,6 +97,7 @@ export interface SaleItem {
   perfume_ml_sold: number;
   bottle_qty_sold: number;
   wholesale_ml_sold: number;
+  returned_quantity: number;
   product_name_snapshot: string;
   variant_size_ml_snapshot: number;
   product_variants?: Variant;
