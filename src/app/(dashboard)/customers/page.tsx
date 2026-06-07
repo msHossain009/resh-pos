@@ -33,6 +33,7 @@ export default function CustomersPage() {
   const [sales, setSales] = useState<{ id: string; customer_id: string; total: number; paid_amount: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [customerTypeFilter, setCustomerTypeFilter] = useState("");
   const [showDialog, setShowDialog] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [saving, setSaving] = useState(false);
@@ -167,12 +168,13 @@ export default function CustomersPage() {
     toast.success("CSV exported");
   };
 
-  const filtered = customers.filter((c) =>
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    c.email?.toLowerCase().includes(search.toLowerCase()) ||
-    c.phone?.includes(search) ||
-    c.barcode_id?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = customers.filter((c) => {
+    if (customerTypeFilter && customerTypeFilter !== "all" && c.customer_type !== customerTypeFilter) return false;
+    return c.name.toLowerCase().includes(search.toLowerCase()) ||
+      c.email?.toLowerCase().includes(search.toLowerCase()) ||
+      c.phone?.includes(search) ||
+      c.barcode_id?.toLowerCase().includes(search.toLowerCase());
+  });
 
   return (
     <div className="space-y-6">
@@ -196,6 +198,14 @@ export default function CustomersPage() {
           <Search className="h-4 w-4 text-muted-foreground" />
           <Input placeholder="Search by name, email, phone or barcode..." value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
+        <Select value={customerTypeFilter} onValueChange={setCustomerTypeFilter}>
+          <SelectTrigger className="h-9 w-36"><SelectValue placeholder="All Types" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Types</SelectItem>
+            <SelectItem value="retail">Retail</SelectItem>
+            <SelectItem value="wholesale">Wholesale</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <Card>

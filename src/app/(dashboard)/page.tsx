@@ -9,13 +9,14 @@ import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, downloadCSV } from "@/lib/utils";
 import {
   ShoppingCart, Package, Users, AlertTriangle, DollarSign,
-  BarChart3, Truck, Receipt, TrendingUp, TrendingDown, FlaskConical, BottleWine, Search,
+  BarChart3, Truck, Receipt, TrendingUp, TrendingDown, FlaskConical, BottleWine, Search, Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import toast from "react-hot-toast";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
@@ -209,6 +210,34 @@ export default function Dashboard() {
   if (data && data.dueCount > 0) alerts.push({ type: "destructive", message: `${data.dueCount} unpaid/due sales (${formatCurrency(data.dueAmount)})`, link: "/sales" });
   if (data && data.pendingPOs.length > 0) alerts.push({ type: "warning", message: `${data.pendingPOs.length} pending purchase orders`, link: "/suppliers" });
 
+  const handleExport = () => {
+    if (!data) return;
+    const headers = ["Metric", "Value"];
+    const rows = [
+      ["Today's Revenue", formatCurrency(data.todayRevenue)],
+      ["Today's COGS", formatCurrency(data.todayCogs)],
+      ["Today's Profit", formatCurrency(data.todayProfit)],
+      ["Today's Discount", formatCurrency(data.todayDiscount)],
+      ["Filtered Revenue", formatCurrency(data.monthRevenue)],
+      ["Filtered Expenses", formatCurrency(data.monthExpenses)],
+      ["Filtered Net Profit", formatCurrency(data.monthProfit)],
+      ["Total Products (Active)", String(data.totalProducts)],
+      ["Total Customers", String(data.totalCustomers)],
+      ["Perfume Low Stock", String(data.perfumeLowCount)],
+      ["Perfume Out of Stock", String(data.perfumeOutCount)],
+      ["Bottle Low Stock", String(data.bottleLowCount)],
+      ["Bottle Out of Stock", String(data.bottleOutCount)],
+      ["Due/Unpaid Sales", formatCurrency(data.dueAmount)],
+      ["Pending POs", String(data.pendingPOs.length)],
+      ...(data.recentSales.map((s) => [
+        `Recent Sale: ${s.invoice_no}`,
+        `${formatCurrency(s.total)} - ${s.payment_status} - ${s.customers?.name || "Walk-in"}`,
+      ])),
+    ];
+    downloadCSV(`dashboard-${new Date().toISOString().split("T")[0]}.csv`, headers, rows);
+    toast.success("CSV exported");
+  };
+
   const isProfit = (data?.todayProfit || 0) >= 0;
   const isMonthProfit = (data?.monthProfit || 0) >= 0;
 
@@ -320,9 +349,14 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
           <p className="text-sm text-muted-foreground">Your perfume business at a glance.</p>
         </div>
-        <Link href="/sales">
-          <Button variant="gold">+ New Sale</Button>
-        </Link>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleExport}>
+            <Download className="h-4 w-4 mr-1" /> Export CSV
+          </Button>
+          <Link href="/sales">
+            <Button variant="gold">+ New Sale</Button>
+          </Link>
+        </div>
       </div>
 
       {/* KPI Cards - Distinct colors, larger icons */}

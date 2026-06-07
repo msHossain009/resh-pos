@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { formatCurrency, formatDateFull, calculateSaleTotals, validateStockBeforeSale } from "@/lib/utils";
+import { formatCurrency, formatDateFull, downloadCSV, calculateSaleTotals, validateStockBeforeSale } from "@/lib/utils";
 import { getBusinessSettings, getCurrentUserId } from "@/lib/helpers";
 import { getPrintStyles } from "@/components/receipt/receipt-view";
 import { printReceipt } from "@/components/receipt/receipt-pdf";
@@ -134,6 +134,7 @@ export default function SalesPage() {
     if (filterOrderType && filterOrderType !== "all") query = query.eq("order_type", filterOrderType);
     if (filterSaleType && filterSaleType !== "all") query = query.eq("sale_type", filterSaleType);
     if (filterStatus && filterStatus !== "all") query = query.eq("status", filterStatus);
+    if (filterInvoice) query = query.ilike("invoice_no", `%${filterInvoice}%`);
 
     const { data } = await query;
     if (data) setSales(data);
@@ -569,6 +570,17 @@ export default function SalesPage() {
     setShowSale(true);
   };
 
+  const handleExportSales = () => {
+    const headers = ["Invoice", "Customer", "Sale Type", "Status", "Items", "Total", "Payment Method", "Payment Status", "Date"];
+    const rows = sales.map((s) => [
+      s.invoice_no, s.customers?.name || "Walk-in", s.sale_type || "retail",
+      s.status || "completed", String(s.sale_items?.length || 0),
+      String(s.total), s.payment_method, s.payment_status, formatDateFull(s.created_at),
+    ]);
+    downloadCSV(`sales-${new Date().toISOString().split("T")[0]}.csv`, headers, rows);
+    toast.success("CSV exported");
+  };
+
   const statusBadge = (status: string) => {
     switch (status) {
       case "completed": return <Badge variant="success">Completed</Badge>;
@@ -600,6 +612,9 @@ export default function SalesPage() {
               <FileText className="h-4 w-4 mr-1" /> Invoices
             </Button>
           </Link>
+          <Button variant="outline" onClick={handleExportSales}>
+            <Download className="h-4 w-4 mr-1" /> Export CSV
+          </Button>
           <Button variant="gold" onClick={openNewSale}>
             <Plus className="h-4 w-4" /> New Sale
           </Button>
@@ -622,11 +637,15 @@ export default function SalesPage() {
             </div>
             <div className="space-y-1">
               <Label className="text-xs">From</Label>
-              <Input type="date" className="h-9 w-40" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} />
+              <Input type="date" className="h-9 w-36" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">To</Label>
-              <Input type="date" className="h-9 w-40" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} />
+              <Input type="date" className="h-9 w-36" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Invoice #</Label>
+              <Input placeholder="Search invoice..." className="h-9 w-36" value={filterInvoice} onChange={(e) => setFilterInvoice(e.target.value)} />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Customer</Label>
