@@ -39,6 +39,7 @@ export default function SuppliersPage() {
   const { profile } = useProfile();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrderRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const supabase = createClient();
 
@@ -64,6 +65,7 @@ export default function SuppliersPage() {
   const [receiveSaving, setReceiveSaving] = useState(false);
 
   const fetchData = useCallback(async () => {
+    setLoading(true);
     const [s, po, v] = await Promise.all([
       supabase.from("suppliers").select("*").order("name"),
       supabase.from("purchase_orders").select("*, suppliers(name)").order("created_at", { ascending: false }).limit(50),
@@ -72,6 +74,7 @@ export default function SuppliersPage() {
     if (s.data) setSuppliers(s.data);
     if (po.data) setPurchaseOrders(po.data);
     if (v.data) setVariants(v.data);
+    setLoading(false);
   }, [supabase]);
 
   useEffect(() => {
@@ -370,7 +373,9 @@ export default function SuppliersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredSuppliers.length === 0 ? (
+              {loading ? (
+                <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+              ) : filteredSuppliers.length === 0 ? (
                 <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No suppliers added yet.</TableCell></TableRow>
               ) : (
                 filteredSuppliers.map((s) => (
@@ -417,7 +422,9 @@ export default function SuppliersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {purchaseOrders.length === 0 ? (
+              {loading ? (
+                <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+              ) : purchaseOrders.length === 0 ? (
                 <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No purchase orders yet.</TableCell></TableRow>
               ) : (
                 purchaseOrders.map((po) => (
