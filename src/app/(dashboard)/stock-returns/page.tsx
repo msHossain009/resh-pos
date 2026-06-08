@@ -168,10 +168,10 @@ export default function StockReturnsPage() {
           throw new Error(`Failed to fetch variant stock: ${cvError?.message}`);
         }
 
-        const isRetail = selectedSale.sale_type === "retail";
-        const perfumeMlToRestore = isRetail
-          ? item.returnQty * (variant.size_ml || 0)
-          : (item.returnQty * (item.wholesale_ml_sold || 0)) / (item.quantity || 1);
+        const totalMlSold = item.wholesale_ml_sold || item.perfume_ml_sold || 0;
+        const perfumeMlToRestore = totalMlSold > 0
+          ? (item.returnQty / (item.quantity || 1)) * totalMlSold
+          : (variant?.size_ml || 0) * item.returnQty;
         const bottlesToRestore = Math.round((item.returnQty / (item.quantity || 1)) * (item.bottle_qty_sold || 0));
 
         const prevMl = currentVariant.stock_ml || 0;
