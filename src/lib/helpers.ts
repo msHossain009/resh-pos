@@ -142,14 +142,15 @@ export async function addDemoData(): Promise<{ success: boolean; message: string
     // 5. Expenses
     const today = new Date().toISOString().split("T")[0];
     const demoExpenses = [
-      { description: "[Demo] Shop rent", amount: 35000, category: "Rent", date: today, payment_method: "Cash", created_by: userId },
-      { description: "[Demo] Staff salaries", amount: 45000, category: "Salary", date: today, payment_method: "Bank Transfer", created_by: userId },
-      { description: "[Demo] Facebook ads", amount: 5000, category: "Marketing", date: today, payment_method: "bKash", created_by: userId },
-      { description: "[Demo] Packaging supplies", amount: 3200, category: "Packaging", date: today, payment_method: "Cash", created_by: userId },
-      { description: "[Demo] Delivery fees", amount: 1800, category: "Delivery", date: today, payment_method: "Nagad", created_by: userId },
-      { description: "[Demo] Electricity bill", amount: 4200, category: "Utility", date: today, payment_method: "bKash", created_by: userId },
+      { description: "[Demo] Shop rent", amount: 35000, category: "Rent", date: today, payment_method: "Cash" },
+      { description: "[Demo] Staff salaries", amount: 45000, category: "Salary", date: today, payment_method: "Bank Transfer" },
+      { description: "[Demo] Facebook ads", amount: 5000, category: "Marketing", date: today, payment_method: "bKash" },
+      { description: "[Demo] Packaging supplies", amount: 3200, category: "Packaging", date: today, payment_method: "Cash" },
+      { description: "[Demo] Delivery fees", amount: 1800, category: "Delivery", date: today, payment_method: "Nagad" },
+      { description: "[Demo] Electricity bill", amount: 4200, category: "Utility", date: today, payment_method: "bKash" },
     ];
-    await supabase.from("expenses").insert(demoExpenses);
+    const { error: expErr } = await supabase.from("expenses").insert(demoExpenses);
+    if (expErr) throw new Error("Failed to create expenses: " + expErr.message);
 
     const { data: allVariants } = await supabase
       .from("product_variants")

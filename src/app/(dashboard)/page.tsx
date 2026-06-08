@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +56,7 @@ export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
+  const alerted = useRef(false);
 
   // Filters
   const [filterDateRange, setFilterDateRange] = useState("today");
@@ -175,7 +176,7 @@ export default function Dashboard() {
         const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
         const chartData = days.map((d) => ({ day: d, revenue: dayMap[d] || 0 }));
 
-        setData({
+        const newData = {
           todayRevenue, todayCogs, todayProfit: todayRevenue - todayCogs, todayDiscount,
           monthRevenue, monthExpenses: monthExpTotal, monthProfit: monthRevenue - monthExpTotal,
           totalProducts: productsCount?.count || 0, totalCustomers: customersCount?.count || 0,
@@ -185,7 +186,29 @@ export default function Dashboard() {
           recentSales: (recentSales || []) as unknown as RecentSale[],
           pendingPOs: pendingPOs || [],
           chartData,
-        });
+        };
+        setData(newData);
+
+        // Show stock/due alerts as temporary toasts on first load
+        if (!alerted.current) {
+          const alerts: { type: "error" | "warning"; message: string; link?: string }[] = [];
+          if (newData.perfumeOutCount > 0) alerts.push({ type: "error", message: `${newData.perfumeOutCount} variants out of perfume stock`, link: "/inventory" });
+          if (newData.perfumeLowCount > 0) alerts.push({ type: "warning", message: `${newData.perfumeLowCount} variants low on perfume`, link: "/inventory" });
+          if (newData.bottleOutCount > 0) alerts.push({ type: "error", message: `${newData.bottleOutCount} variants out of bottles`, link: "/inventory" });
+          if (newData.bottleLowCount > 0) alerts.push({ type: "warning", message: `${newData.bottleLowCount} variants low on bottles`, link: "/inventory" });
+          if (newData.dueCount > 0) alerts.push({ type: "error", message: `${newData.dueCount} unpaid/due sales (${formatCurrency(newData.dueAmount)})`, link: "/sales" });
+          if (newData.pendingPOs.length > 0) alerts.push({ type: "warning", message: `${newData.pendingPOs.length} pending purchase orders`, link: "/suppliers" });
+          alerts.forEach((a, i) => {
+            setTimeout(() => {
+              if (a.type === "error") {
+                toast.error(a.message);
+              } else {
+                toast(a.message, { icon: "⚠️" });
+              }
+            }, i * 500);
+          });
+          alerted.current = true;
+        }
       } catch (err) {
         console.error("Dashboard error:", err);
       } finally {
@@ -202,13 +225,7 @@ export default function Dashboard() {
     );
   }
 
-  const alerts: { type: "destructive" | "warning"; message: string; link?: string }[] = [];
-  if (data && data.perfumeOutCount > 0) alerts.push({ type: "destructive", message: `${data.perfumeOutCount} variants out of perfume stock`, link: "/inventory" });
-  if (data && data.perfumeLowCount > 0) alerts.push({ type: "warning", message: `${data.perfumeLowCount} variants low on perfume`, link: "/inventory" });
-  if (data && data.bottleOutCount > 0) alerts.push({ type: "destructive", message: `${data.bottleOutCount} variants out of bottles`, link: "/inventory" });
-  if (data && data.bottleLowCount > 0) alerts.push({ type: "warning", message: `${data.bottleLowCount} variants low on bottles`, link: "/inventory" });
-  if (data && data.dueCount > 0) alerts.push({ type: "destructive", message: `${data.dueCount} unpaid/due sales (${formatCurrency(data.dueAmount)})`, link: "/sales" });
-  if (data && data.pendingPOs.length > 0) alerts.push({ type: "warning", message: `${data.pendingPOs.length} pending purchase orders`, link: "/suppliers" });
+
 
   const handleExport = () => {
     if (!data) return;
@@ -326,23 +343,7 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
-      {/* Alerts */}
-      {alerts.length > 0 && (
-        <div className="space-y-2">
-          {alerts.slice(0, 3).map((alert, idx) => (
-            <Link key={idx} href={alert.link || "#"}>
-              <Card className={`${alert.type === "destructive" ? "border-red-500/50 bg-red-500/5" : "border-yellow-500/50 bg-yellow-500/5"} cursor-pointer hover:opacity-80`}>
-                <CardContent className="py-3 flex items-center gap-3">
-                  <AlertTriangle className={`h-5 w-5 ${alert.type === "destructive" ? "text-red-500" : "text-yellow-500"}`} />
-                  <p className={`text-sm font-medium ${alert.type === "destructive" ? "text-red-600 dark:text-red-400" : "text-yellow-600 dark:text-yellow-400"}`}>
-                    {alert.message}
-                  </p>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-        </div>
-      )}
+
 
       <div className="flex items-center justify-between">
         <div>
