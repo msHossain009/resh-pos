@@ -247,100 +247,112 @@ export default function ProductsPage() {
     setSaving(true);
 
     const productActive = form.status === "Active";
+    const catId = form.category_id && categories.some(c => c.id === form.category_id) ? form.category_id : null;
     const productData: Record<string, unknown> = {
       name: form.name,
       description: form.description || null,
       category: form.category || null,
-      category_id: form.category_id || null,
+      category_id: catId,
       image_url: form.image_url || null,
       active: productActive,
     };
 
-    if (editing) {
-      const { error: pe } = await supabase.from("products").update(productData).eq("id", editing.id);
-      if (pe) { toast.error("Failed to update product"); setSaving(false); return; }
+    try {
+      if (editing) {
+        const { error: pe } = await supabase.from("products").update(productData).eq("id", editing.id);
+        if (pe) { toast.error("Failed to update product"); setSaving(false); return; }
 
-      for (const v of variants) {
-        const variantData: Record<string, unknown> = {
-          product_id: editing.id,
-          size_ml: v.size_ml,
-          concentration: v.concentration,
-          price: v.retail_price ?? v.price ?? 0,
-          cost: v.retail_cost ?? v.cost ?? 0,
-          retail_price: v.retail_price ?? null,
-          retail_cost: v.retail_cost ?? null,
-          wholesale_price_per_ml: v.wholesale_price_per_ml ?? null,
-          wholesale_cost_per_ml: v.wholesale_cost_per_ml ?? null,
-          stock_ml: v.stock_ml ?? 0,
-          stock_quantity: Math.round(v.stock_ml ?? 0),
-          bottle_stock_qty: v.bottle_stock_qty ?? 0,
-          low_stock_ml_threshold: v.low_stock_ml_threshold ?? 100,
-          low_stock_threshold: Math.round(v.low_stock_ml_threshold ?? 100),
-          low_bottle_threshold: v.low_bottle_threshold ?? 10,
-          sku: v.sku || undefined,
-          barcode: v.barcode || null,
-          active: form.status === "Cancelled" ? false : (v.active !== false),
-        };
-        if (v.id) {
-          const { error: ve } = await supabase.from("product_variants").update(variantData).eq("id", v.id);
-          if (ve) { toast.error("Failed to update variant: " + ve.message); setSaving(false); return; }
-        } else {
+        for (const v of variants) {
+          const variantData: Record<string, unknown> = {
+            product_id: editing.id,
+            size_ml: v.size_ml,
+            concentration: v.concentration,
+            price: v.retail_price ?? v.price ?? 0,
+            cost: v.retail_cost ?? v.cost ?? 0,
+            retail_price: v.retail_price ?? null,
+            retail_cost: v.retail_cost ?? null,
+            wholesale_price_per_ml: v.wholesale_price_per_ml ?? null,
+            wholesale_cost_per_ml: v.wholesale_cost_per_ml ?? null,
+            stock_ml: v.stock_ml ?? 0,
+            stock_quantity: Math.round(v.stock_ml ?? 0),
+            bottle_stock_qty: v.bottle_stock_qty ?? 0,
+            low_stock_ml_threshold: v.low_stock_ml_threshold ?? 100,
+            low_stock_threshold: Math.round(v.low_stock_ml_threshold ?? 100),
+            low_bottle_threshold: v.low_bottle_threshold ?? 10,
+            sku: v.sku || undefined,
+            barcode: v.barcode || null,
+            active: form.status === "Cancelled" ? false : (v.active !== false),
+          };
+          if (v.id) {
+            const { error: ve } = await supabase.from("product_variants").update(variantData).eq("id", v.id);
+            if (ve) { toast.error("Failed to update variant: " + ve.message); setSaving(false); return; }
+          } else {
+            const { error: ve } = await supabase.from("product_variants").insert(variantData);
+            if (ve) { toast.error("Failed to create variant: " + ve.message); setSaving(false); return; }
+          }
+        }
+        toast.success("Product updated");
+      } else {
+        const { data: newProduct, error: pe } = await supabase
+          .from("products")
+          .insert(productData)
+          .select()
+          .single();
+        if (pe || !newProduct) { toast.error("Failed to create product"); setSaving(false); return; }
+
+        for (const v of variants) {
+          const variantData: Record<string, unknown> = {
+            product_id: newProduct.id,
+            size_ml: v.size_ml,
+            concentration: v.concentration,
+            price: v.retail_price ?? v.price ?? 0,
+            cost: v.retail_cost ?? v.cost ?? 0,
+            retail_price: v.retail_price ?? null,
+            retail_cost: v.retail_cost ?? null,
+            wholesale_price_per_ml: v.wholesale_price_per_ml ?? null,
+            wholesale_cost_per_ml: v.wholesale_cost_per_ml ?? null,
+            stock_ml: v.stock_ml ?? 0,
+            stock_quantity: Math.round(v.stock_ml ?? 0),
+            bottle_stock_qty: v.bottle_stock_qty ?? 0,
+            low_stock_ml_threshold: v.low_stock_ml_threshold ?? 100,
+            low_stock_threshold: Math.round(v.low_stock_ml_threshold ?? 100),
+            low_bottle_threshold: v.low_bottle_threshold ?? 10,
+            sku: v.sku || undefined,
+            barcode: v.barcode || null,
+            active: v.active !== false,
+          };
           const { error: ve } = await supabase.from("product_variants").insert(variantData);
           if (ve) { toast.error("Failed to create variant: " + ve.message); setSaving(false); return; }
         }
+        toast.success("Product created");
       }
-      toast.success("Product updated");
-    } else {
-      const { data: newProduct, error: pe } = await supabase
-        .from("products")
-        .insert(productData)
-        .select()
-        .single();
-      if (pe || !newProduct) { toast.error("Failed to create product"); setSaving(false); return; }
 
-      for (const v of variants) {
-        const variantData: Record<string, unknown> = {
-          product_id: newProduct.id,
-          size_ml: v.size_ml,
-          concentration: v.concentration,
-          price: v.retail_price ?? v.price ?? 0,
-          cost: v.retail_cost ?? v.cost ?? 0,
-          retail_price: v.retail_price ?? null,
-          retail_cost: v.retail_cost ?? null,
-          wholesale_price_per_ml: v.wholesale_price_per_ml ?? null,
-          wholesale_cost_per_ml: v.wholesale_cost_per_ml ?? null,
-          stock_ml: v.stock_ml ?? 0,
-          stock_quantity: Math.round(v.stock_ml ?? 0),
-          bottle_stock_qty: v.bottle_stock_qty ?? 0,
-          low_stock_ml_threshold: v.low_stock_ml_threshold ?? 100,
-          low_stock_threshold: Math.round(v.low_stock_ml_threshold ?? 100),
-          low_bottle_threshold: v.low_bottle_threshold ?? 10,
-          sku: v.sku || undefined,
-          barcode: v.barcode || null,
-          active: v.active !== false,
-        };
-        const { error: ve } = await supabase.from("product_variants").insert(variantData);
-        if (ve) { toast.error("Failed to create variant: " + ve.message); setSaving(false); return; }
-      }
-      toast.success("Product created");
+      setShowDialog(false);
+      resetForm();
+      fetchData();
+    } catch (err) {
+      console.error("Product save error:", err);
+      toast.error("An unexpected error occurred");
+    } finally {
+      setSaving(false);
     }
-
-    setShowDialog(false);
-    resetForm();
-    fetchData();
-    setSaving(false);
   };
 
   const handleToggleActive = async (product: Product) => {
-    const newActive = !product.active;
-    const newStatus = newActive ? "active" : "inactive";
-    const { error } = await supabase
-      .from("products")
-      .update({ active: newActive, status: newStatus })
-      .eq("id", product.id);
-    if (error) { toast.error("Failed to toggle status"); return; }
-    toast.success(newActive ? "Product activated" : "Product deactivated");
-    fetchData();
+    try {
+      const newActive = !product.active;
+      const newStatus = newActive ? "active" : "inactive";
+      const { error } = await supabase
+        .from("products")
+        .update({ active: newActive, status: newStatus })
+        .eq("id", product.id);
+      if (error) { toast.error("Failed to toggle status"); return; }
+      toast.success(newActive ? "Product activated" : "Product deactivated");
+      fetchData();
+    } catch (err) {
+      console.error("Toggle active error:", err);
+      toast.error("An unexpected error occurred");
+    }
   };
 
   const handleExport = () => {
@@ -503,14 +515,21 @@ export default function ProductsPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Category</Label>
-                <Select value={form.category_id || form.category} onValueChange={(v) => setForm({ ...form, category_id: v, category: v })}>
+                <Select value={categories.some(c => c.id === form.category_id) ? form.category_id : "__none__"} onValueChange={(v) => {
+                  if (v === "__custom__") {
+                    setForm({ ...form, category_id: "", category: "" });
+                  } else {
+                    const cat = categories.find(c => c.id === v);
+                    setForm({ ...form, category_id: v, category: cat?.name || v });
+                  }
+                }}>
                   <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
                   <SelectContent>
                     {categories.map((cat) => (<SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>))}
                     <SelectItem value="__custom__">Custom...</SelectItem>
                   </SelectContent>
                 </Select>
-                {form.category_id === "__custom__" && (
+                {(!form.category_id || !categories.some(c => c.id === form.category_id)) && (
                   <Input className="mt-2" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Enter custom category" />
                 )}
               </div>
