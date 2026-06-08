@@ -117,8 +117,8 @@ export default function StockReturnsPage() {
 
   const getEffectiveUnitPrice = (item: ReturnableItem) => {
     if (!selectedSale?.subtotal || selectedSale.subtotal <= 0) return item.unit_price;
-    const discountRatio = (selectedSale.discount || 0) / selectedSale.subtotal;
-    return item.unit_price * (1 - Math.min(discountRatio, 1));
+    const ratio = (selectedSale.total || 0) / selectedSale.subtotal;
+    return item.unit_price * ratio;
   };
 
   const processReturn = async () => {
