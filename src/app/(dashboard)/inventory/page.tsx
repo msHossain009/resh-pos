@@ -53,6 +53,10 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [stockFilter, setStockFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [sizeFilter, setSizeFilter] = useState("all");
+  const [concentrationFilter, setConcentrationFilter] = useState("all");
+  const [activeFilter, setActiveFilter] = useState("all");
   const [showAdjust, setShowAdjust] = useState(false);
   const [selectedVariant, setSelectedVariant] = useState<Variant | null>(null);
   const [adjustMl, setAdjustMl] = useState("0");
@@ -172,6 +176,11 @@ export default function InventoryPage() {
     toast.success("CSV exported");
   };
 
+  // Derived unique values for dropdowns
+  const categories = [...new Set(variants.map(v => v.products?.category).filter(Boolean))] as string[];
+  const sizes = [...new Set(variants.map(v => v.size_ml))].sort((a, b) => a - b);
+  const concentrations = [...new Set(variants.map(v => v.concentration))].sort();
+
   // Compute risk counts
   const lowPerfumeCount = variants.filter((v) => {
     const risk = getPerfumeStockRisk(v.stock_ml || 0, v.low_stock_ml_threshold || 100);
@@ -196,6 +205,12 @@ export default function InventoryPage() {
       v.sku?.toLowerCase().includes(search.toLowerCase()) ||
       v.barcode?.toLowerCase().includes(search.toLowerCase());
     if (!matchesSearch) return false;
+
+    if (categoryFilter !== "all" && v.products?.category !== categoryFilter) return false;
+    if (sizeFilter !== "all" && v.size_ml !== parseFloat(sizeFilter)) return false;
+    if (concentrationFilter !== "all" && v.concentration !== concentrationFilter) return false;
+    if (activeFilter === "active" && !v.active) return false;
+    if (activeFilter === "inactive" && v.active) return false;
 
     const perfumeRisk = getPerfumeStockRisk(v.stock_ml || 0, v.low_stock_ml_threshold || 100);
     const bottleRisk = getBottleStockRisk(v.bottle_stock_qty || 0, v.low_bottle_threshold || 10);
@@ -270,6 +285,47 @@ export default function InventoryPage() {
             <SelectItem value="out_perfume">Out of Perfume</SelectItem>
             <SelectItem value="low_bottle">Low Bottles</SelectItem>
             <SelectItem value="out_bottle">Out of Bottles</SelectItem>
+          </SelectContent>
+        </Select>
+        {categories.length > 0 && (
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger className="w-36 h-9"><SelectValue placeholder="Category" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Categories</SelectItem>
+              {categories.map((cat) => (
+                <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {sizes.length > 0 && (
+          <Select value={sizeFilter} onValueChange={setSizeFilter}>
+            <SelectTrigger className="w-24 h-9"><SelectValue placeholder="Size" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Sizes</SelectItem>
+              {sizes.map((s) => (
+                <SelectItem key={s} value={String(s)}>{s}ml</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {concentrations.length > 0 && (
+          <Select value={concentrationFilter} onValueChange={setConcentrationFilter}>
+            <SelectTrigger className="w-28 h-9"><SelectValue placeholder="Type" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              {concentrations.map((c) => (
+                <SelectItem key={c} value={c}>{c}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        <Select value={activeFilter} onValueChange={setActiveFilter}>
+          <SelectTrigger className="w-28 h-9"><SelectValue placeholder="Status" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="inactive">Inactive</SelectItem>
           </SelectContent>
         </Select>
       </div>

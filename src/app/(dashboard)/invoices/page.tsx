@@ -126,7 +126,7 @@ export default function InvoicesPage() {
       printReceipt({
         sale: inv as unknown as Sale,
         items: data,
-        businessName: settings?.business_name || "Resh POS",
+        businessName: settings?.business_name || "Resh Perfumes",
         tagline: settings?.tagline || "",
         footer: settings?.receipt_footer || "",
         cashierName,
@@ -442,7 +442,7 @@ export default function InvoicesPage() {
               printReceipt({
                 sale: selectedSale as unknown as Sale,
                 items: saleItems,
-                businessName: settings?.business_name || "Resh POS",
+                businessName: settings?.business_name || "Resh Perfumes",
                 tagline: settings?.tagline || "",
                 footer: settings?.receipt_footer || "",
                 cashierName,
@@ -455,7 +455,7 @@ export default function InvoicesPage() {
               printReceipt({
                 sale: selectedSale as unknown as Sale,
                 items: saleItems,
-                businessName: settings?.business_name || "Resh POS",
+                businessName: settings?.business_name || "Resh Perfumes",
                 tagline: settings?.tagline || "",
                 footer: settings?.receipt_footer || "",
                 cashierName,

@@ -20,7 +20,7 @@ import type { Sale, SaleItem, StockMovement } from "@/lib/types";
 import { Search, RotateCcw, Undo2, History } from "lucide-react";
 import toast from "react-hot-toast";
 
-type ReturnableSale = Pick<Sale, "id" | "invoice_no" | "sale_date" | "total" | "status" | "created_at" | "sale_type"> & {
+type ReturnableSale = Pick<Sale, "id" | "invoice_no" | "sale_date" | "total" | "status" | "created_at" | "sale_type" | "subtotal" | "discount" | "discount_type"> & {
   customers: { name: string } | null;
 };
 
@@ -63,7 +63,7 @@ export default function StockReturnsPage() {
     setLoading(true);
     let query = supabaseRef.current
       .from("sales")
-      .select("id, invoice_no, sale_date, total, status, created_at, customers(name)")
+      .select("id, invoice_no, sale_date, total, subtotal, discount, discount_type, status, created_at, customers(name)")
       .in("status", ["completed", "refunded"])
       .order("created_at", { ascending: false })
       .limit(100);
@@ -113,6 +113,12 @@ export default function StockReturnsPage() {
       const clampedQty = Math.max(0, Math.min(qty, item.availableToReturn));
       return { ...item, returnQty: clampedQty };
     }));
+  };
+
+  const getEffectiveUnitPrice = (item: ReturnableItem) => {
+    if (!selectedSale?.subtotal || selectedSale.subtotal <= 0) return item.unit_price;
+    const discountRatio = (selectedSale.discount || 0) / selectedSale.subtotal;
+    return item.unit_price * (1 - Math.min(discountRatio, 1));
   };
 
   const processReturn = async () => {
@@ -224,7 +230,7 @@ export default function StockReturnsPage() {
       }
 
       const returnCount = itemsToReturn.reduce((sum, item) => sum + item.returnQty, 0);
-      const totalValue = itemsToReturn.reduce((sum, item) => sum + item.returnQty * item.unit_price, 0);
+      const totalValue = itemsToReturn.reduce((sum, item) => sum + item.returnQty * getEffectiveUnitPrice(item), 0);
       toast.success(`Return processed: ${returnCount} item(s) worth ${formatCurrency(totalValue)} from ${selectedSale.invoice_no}`);
 
       setShowReturnDialog(false);
@@ -415,7 +421,7 @@ export default function StockReturnsPage() {
                         />
                       </TableCell>
                       <TableCell className="text-right">
-                        {item.returnQty > 0 ? formatCurrency(item.returnQty * item.unit_price) : "-"}
+                        {item.returnQty > 0 ? formatCurrency(item.returnQty * getEffectiveUnitPrice(item)) : "-"}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -429,7 +435,7 @@ export default function StockReturnsPage() {
                   </p>
                   <p className="text-lg font-bold text-gold">
                     Return value: {formatCurrency(
-                      saleItems.reduce((sum, i) => sum + i.returnQty * i.unit_price, 0)
+                      saleItems.reduce((sum, i) => sum + i.returnQty * getEffectiveUnitPrice(i), 0)
                     )}
                   </p>
                 </div>

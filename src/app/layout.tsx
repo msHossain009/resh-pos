@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Resh POS — Perfume Business Management",
+  title: "Resh Perfumes — Perfume Business Management",
   description: "All-in-one management system for Resh Perfumes",
 };
 

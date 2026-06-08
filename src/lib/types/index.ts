@@ -1,4 +1,4 @@
-// Shared TypeScript types for Resh POS
+// Shared TypeScript types for Resh Perfumes
 
 export interface Product {
   id: string;

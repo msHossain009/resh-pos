@@ -1,4 +1,4 @@
-export const APP_NAME = "Resh POS";
+export const APP_NAME = "Resh Perfumes";
 export const APP_TAGLINE = "SCENT YOUR WAY TO UNFORGETTABLE";
 
 export const ID_PREFIXES = {

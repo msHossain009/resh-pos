@@ -283,9 +283,11 @@ export default function ProductsPage() {
           status: form.status === "Cancelled" ? "cancelled" : (form.status === "Active" ? "active" : "inactive"),
         };
         if (v.id) {
-          await supabase.from("product_variants").update(variantData).eq("id", v.id);
+          const { error: ve } = await supabase.from("product_variants").update(variantData).eq("id", v.id);
+          if (ve) { toast.error("Failed to update variant: " + ve.message); setSaving(false); return; }
         } else {
-          await supabase.from("product_variants").insert(variantData);
+          const { error: ve } = await supabase.from("product_variants").insert(variantData);
+          if (ve) { toast.error("Failed to create variant: " + ve.message); setSaving(false); return; }
         }
       }
       toast.success("Product updated");
@@ -319,7 +321,8 @@ export default function ProductsPage() {
           active: v.active !== false,
           status: "active",
         };
-        await supabase.from("product_variants").insert(variantData);
+        const { error: ve } = await supabase.from("product_variants").insert(variantData);
+        if (ve) { toast.error("Failed to create variant: " + ve.message); setSaving(false); return; }
       }
       toast.success("Product created");
     }

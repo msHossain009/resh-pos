@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS product_variants (
 
 CREATE TABLE IF NOT EXISTS business_settings (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  business_name TEXT DEFAULT 'Resh POS',
+  business_name TEXT DEFAULT 'Resh Perfumes',
   tagline TEXT DEFAULT 'SCENT YOUR WAY TO UNFORGETTABLE',
   currency TEXT DEFAULT 'BDT',
   tax_rate NUMERIC DEFAULT 5,
