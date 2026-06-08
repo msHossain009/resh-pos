@@ -280,7 +280,6 @@ export default function ProductsPage() {
           sku: v.sku || undefined,
           barcode: v.barcode || null,
           active: form.status === "Cancelled" ? false : (v.active !== false),
-          status: form.status === "Cancelled" ? "cancelled" : (form.status === "Active" ? "active" : "inactive"),
         };
         if (v.id) {
           const { error: ve } = await supabase.from("product_variants").update(variantData).eq("id", v.id);
@@ -319,7 +318,6 @@ export default function ProductsPage() {
           sku: v.sku || undefined,
           barcode: v.barcode || null,
           active: v.active !== false,
-          status: "active",
         };
         const { error: ve } = await supabase.from("product_variants").insert(variantData);
         if (ve) { toast.error("Failed to create variant: " + ve.message); setSaving(false); return; }
