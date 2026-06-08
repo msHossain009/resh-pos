@@ -12,12 +12,15 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose,
 } from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { formatCurrency, formatDateFull } from "@/lib/utils";
 import { getCurrentUserId } from "@/lib/helpers";
 import type { Sale, SaleItem, StockMovement } from "@/lib/types";
-import { Search, RotateCcw, Undo2, History } from "lucide-react";
+import { Search, RotateCcw, Undo2, History, List } from "lucide-react";
 import toast from "react-hot-toast";
 
 type ReturnableSale = Pick<Sale, "id" | "invoice_no" | "sale_date" | "total" | "status" | "created_at" | "sale_type" | "subtotal" | "discount" | "discount_type"> & {
@@ -32,6 +35,17 @@ interface ReturnableItem extends SaleItem {
 type ReturnHistoryEntry = StockMovement & {
   sales?: { invoice_no: string } | null;
 };
+
+const RETURN_REASONS = [
+  "Customer returned (গ্রাহক ফেরত দিয়েছেন)",
+  "Damaged bottle (বোতল নষ্ট)",
+  "Wrong size (ভুল সাইজ)",
+  "Wrong product (ভুল পণ্য)",
+  "Expired / bad quality (মেয়াদোত্তীর্ণ)",
+  "Customer changed mind (মত পরিবর্তন)",
+  "Defective seal (সিল নষ্ট)",
+  "Other...",
+] as const;
 
 export default function StockReturnsPage() {
   const [sales, setSales] = useState<ReturnableSale[]>([]);
@@ -48,6 +62,7 @@ export default function StockReturnsPage() {
   const [saleItems, setSaleItems] = useState<ReturnableItem[]>([]);
   const [showReturnDialog, setShowReturnDialog] = useState(false);
   const [returnReason, setReturnReason] = useState("");
+  const [returnReasonPreset, setReturnReasonPreset] = useState("");
   const [processing, setProcessing] = useState(false);
   const [detailsLoading, setDetailsLoading] = useState(false);
 
@@ -88,6 +103,7 @@ export default function StockReturnsPage() {
     setDetailsLoading(true);
     setSelectedSale(sale);
     setReturnReason("");
+    setReturnReasonPreset("");
 
     const { data: items } = await supabase
       .from("sale_items")
@@ -156,7 +172,7 @@ export default function StockReturnsPage() {
         const perfumeMlToRestore = isRetail
           ? item.returnQty * (variant.size_ml || 0)
           : (item.returnQty * (item.wholesale_ml_sold || 0)) / (item.quantity || 1);
-        const bottlesToRestore = isRetail ? item.returnQty : 0;
+        const bottlesToRestore = Math.round((item.returnQty / (item.quantity || 1)) * (item.bottle_qty_sold || 0));
 
         const prevMl = currentVariant.stock_ml || 0;
         const newMl = prevMl + perfumeMlToRestore;
@@ -379,11 +395,23 @@ export default function StockReturnsPage() {
             <div className="grid gap-4">
               <div className="space-y-2">
                 <Label>Return Reason *</Label>
-                <Input
-                  placeholder="e.g. Customer returned, Damaged bottle, Wrong size..."
-                  value={returnReason}
-                  onChange={(e) => setReturnReason(e.target.value)}
-                />
+                <Select value={returnReasonPreset} onValueChange={(v) => {
+                  setReturnReasonPreset(v);
+                  setReturnReason(v === "Other..." ? "" : v);
+                }}>
+                  <SelectTrigger><SelectValue placeholder="Select a reason..." /></SelectTrigger>
+                  <SelectContent>
+                    {RETURN_REASONS.map((r) => (<SelectItem key={r} value={r}>{r}</SelectItem>))}
+                  </SelectContent>
+                </Select>
+                {returnReasonPreset === "Other..." && (
+                  <Input
+                    className="mt-2"
+                    placeholder="Type custom reason..."
+                    value={returnReason}
+                    onChange={(e) => setReturnReason(e.target.value)}
+                  />
+                )}
               </div>
 
               <Table>
