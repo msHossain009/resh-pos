@@ -62,7 +62,7 @@ export async function addDemoData(): Promise<{ success: boolean; message: string
     for (const prod of demoProducts) {
       const { data: newProd } = await supabase.from("products").insert({
         name: prod.name, description: prod.description, category: prod.category,
-        category_id: prod.category_id, active: true, status: "active", is_demo: true,
+        category_id: prod.category_id, active: true,
       }).select().single();
       if (!newProd) continue;
 
@@ -88,8 +88,6 @@ export async function addDemoData(): Promise<{ success: boolean; message: string
           sku: `${prod.name.substring(0, 3).toUpperCase()}-${size}ml`,
           barcode: `DEMO${String(Math.floor(100000 + Math.random() * 900000))}`,
           active: true,
-          status: "active",
-          is_demo: true,
         };
       });
       await supabase.from("product_variants").insert(variants);
@@ -97,20 +95,20 @@ export async function addDemoData(): Promise<{ success: boolean; message: string
 
     // 3. Customers
     const demoCustomers = [
-      { name: "Fatima Begum", phone: "01711-111111", customer_type: "retail", loyalty_points: 150, total_spent: 12500, is_demo: true },
-      { name: "Rahul Ahmed", phone: "01722-222222", customer_type: "wholesale", loyalty_points: 500, total_spent: 85000, is_demo: true },
-      { name: "Nasrin Sultana", phone: "01733-333333", customer_type: "retail", loyalty_points: 75, total_spent: 5400, is_demo: true },
-      { name: "Karim Traders", phone: "01744-444444", customer_type: "wholesale", loyalty_points: 1200, total_spent: 245000, is_demo: true },
-      { name: "Shamim Hossain", phone: "01755-555555", customer_type: "retail", loyalty_points: 30, total_spent: 3200, is_demo: true },
+      { name: "Fatima Begum", phone: "01711-111111", customer_type: "retail", loyalty_points: 150, total_spent: 12500 },
+      { name: "Rahul Ahmed", phone: "01722-222222", customer_type: "wholesale", loyalty_points: 500, total_spent: 85000 },
+      { name: "Nasrin Sultana", phone: "01733-333333", customer_type: "retail", loyalty_points: 75, total_spent: 5400 },
+      { name: "Karim Traders", phone: "01744-444444", customer_type: "wholesale", loyalty_points: 1200, total_spent: 245000 },
+      { name: "Shamim Hossain", phone: "01755-555555", customer_type: "retail", loyalty_points: 30, total_spent: 3200 },
     ];
     const { data: custData } = await supabase.from("customers").insert(demoCustomers).select();
     if (!custData) throw new Error("Failed to create customers");
 
     // 4. Suppliers
     const demoSup = [
-      { name: "Al Haramain Perfumes", contact_person: "Mr. Khalid", phone: "01611-111111", email: "info@haramain.com", is_demo: true },
-      { name: "Ajmal Perfumes", contact_person: "Mr. Rashid", phone: "01622-222222", email: "info@ajmal.com", is_demo: true },
-      { name: "Swiss Arabian", contact_person: "Mr. Hassan", phone: "01633-333333", email: "info@swissarabian.com", is_demo: true },
+      { name: "Al Haramain Perfumes", contact_person: "Mr. Khalid", phone: "01611-111111", email: "info@haramain.com" },
+      { name: "Ajmal Perfumes", contact_person: "Mr. Rashid", phone: "01622-222222", email: "info@ajmal.com" },
+      { name: "Swiss Arabian", contact_person: "Mr. Hassan", phone: "01633-333333", email: "info@swissarabian.com" },
     ];
     const { data: supData } = await supabase.from("suppliers").insert(demoSup).select();
     if (!supData) throw new Error("Failed to create suppliers");
@@ -118,20 +116,25 @@ export async function addDemoData(): Promise<{ success: boolean; message: string
     // 5. Expenses
     const today = new Date().toISOString().split("T")[0];
     const demoExpenses = [
-      { description: "Shop rent - May 2026", amount: 35000, category: "Rent", date: today, payment_method: "Cash", is_demo: true, created_by: userId },
-      { description: "Staff salaries - May 2026", amount: 45000, category: "Salary", date: today, payment_method: "Bank Transfer", is_demo: true, created_by: userId },
-      { description: "Facebook ads campaign", amount: 5000, category: "Marketing", date: today, payment_method: "bKash", is_demo: true, created_by: userId },
-      { description: "Packaging supplies", amount: 3200, category: "Packaging", date: today, payment_method: "Cash", is_demo: true, created_by: userId },
-      { description: "Delivery fees", amount: 1800, category: "Delivery", date: today, payment_method: "Nagad", is_demo: true, created_by: userId },
-      { description: "Electricity bill", amount: 4200, category: "Utility", date: today, payment_method: "bKash", is_demo: true, created_by: userId },
+      { description: "[Demo] Shop rent", amount: 35000, category: "Rent", date: today, payment_method: "Cash", created_by: userId },
+      { description: "[Demo] Staff salaries", amount: 45000, category: "Salary", date: today, payment_method: "Bank Transfer", created_by: userId },
+      { description: "[Demo] Facebook ads", amount: 5000, category: "Marketing", date: today, payment_method: "bKash", created_by: userId },
+      { description: "[Demo] Packaging supplies", amount: 3200, category: "Packaging", date: today, payment_method: "Cash", created_by: userId },
+      { description: "[Demo] Delivery fees", amount: 1800, category: "Delivery", date: today, payment_method: "Nagad", created_by: userId },
+      { description: "[Demo] Electricity bill", amount: 4200, category: "Utility", date: today, payment_method: "bKash", created_by: userId },
     ];
     await supabase.from("expenses").insert(demoExpenses);
 
-    // 6. Fetch demo variants for later use
+    // 6. Fetch demo variants for later use — match by product names
+    const prodNames = demoProducts.map(p => p.name);
+    const { data: createdProds } = await supabase.from("products").select("id").in("name", prodNames);
+    const createdProdIds = (createdProds || []).map(p => p.id);
+    if (createdProdIds.length === 0) throw new Error("No demo products found");
+
     const { data: allVariants } = await supabase
       .from("product_variants")
       .select("*, products!inner(name, category)")
-      .eq("is_demo", true);
+      .in("product_id", createdProdIds);
     if (!allVariants || allVariants.length === 0) throw new Error("No demo variants found");
 
     // 7. Demo Purchase Orders
@@ -164,13 +167,12 @@ export async function addDemoData(): Promise<{ success: boolean; message: string
         total_amount: poTotal,
         notes: `Demo PO for ${supplier.name}`,
         created_by: userId,
-        is_demo: true,
         created_at: poDates[pi] || new Date().toISOString(),
       }).select().single();
       if (!po) continue;
 
       await supabase.from("purchase_order_items").insert(
-        poItems.map((i) => ({ ...i, po_id: po.id, is_demo: true }))
+        poItems.map((i) => ({ ...i, po_id: po.id }))
       );
 
       // Record stock movements for received items
@@ -195,7 +197,6 @@ export async function addDemoData(): Promise<{ success: boolean; message: string
             reference_type: "purchase_order",
             reference_id: po.id,
             created_by: userId,
-            is_demo: true,
             created_at: poDates[pi],
           });
 
@@ -270,18 +271,16 @@ export async function addDemoData(): Promise<{ success: boolean; message: string
         payment_status: isPartial ? "Partial" : "Paid",
         order_type: si < 3 ? "Offline" : "Online",
         sale_type: isRetail ? "retail" : "wholesale",
-        status: "completed",
         paid_amount: isPartial ? Math.round(total * 0.5) : total,
         due_amount: isPartial ? Math.round(total * 0.5) : 0,
         notes: `Demo sale #${si + 1}`,
         created_by: userId,
-        is_demo: true,
         created_at: saleDates[si],
       }).select().single();
       if (!sale) continue;
 
       await supabase.from("sale_items").insert(
-        items.map((i) => ({ ...i, sale_id: sale.id, is_demo: true }))
+        items.map((i) => ({ ...i, sale_id: sale.id }))
       );
 
       allDemoSales.push({
@@ -325,7 +324,6 @@ export async function addDemoData(): Promise<{ success: boolean; message: string
           reference_type: "sale",
           reference_id: sale.id,
           created_by: userId,
-          is_demo: true,
           created_at: saleDates[si],
         });
       }
@@ -345,7 +343,6 @@ export async function addDemoData(): Promise<{ success: boolean; message: string
           reference_type: "sale",
           reference_id: sale.id,
           description: `Points earned on sale ${sale.invoice_no} (demo)`,
-          is_demo: true,
           created_at: saleDates[si],
         });
       }
@@ -358,41 +355,99 @@ export async function addDemoData(): Promise<{ success: boolean; message: string
   }
 }
 
-/** Remove all demo data safely (only records with is_demo = true) */
+/** Remove all demo data safely using known names/patterns (no is_demo column dependency) */
 export async function removeDemoData(): Promise<{ success: boolean; message: string }> {
   const supabase = createClient();
   try {
-    // Get IDs of demo sales for child table deletes
-    const { data: demoSales } = await supabase.from("sales").select("id").eq("is_demo", true);
-    const saleIds = demoSales?.map((s) => s.id) || [];
-    const { data: demoPOs } = await supabase.from("purchase_orders").select("id").eq("is_demo", true);
-    const poIds = demoPOs?.map((p) => p.id) || [];
+    const demoProdNames = ["Rose Oud", "Musk Al Tahara", "Black Opium", "Santal 33", "Oud Wood", "Aqua Di Gio", "Mystic Oud"];
+    const demoCatNames = ["Floral", "Oriental", "Woody", "Fresh", "Oud", "Citrus"];
+    const demoCustPhones = ["01711-111111", "01722-222222", "01733-333333", "01744-444444", "01755-555555"];
+    const demoSupNames = ["Al Haramain Perfumes", "Ajmal Perfumes", "Swiss Arabian"];
+    const demoExpDescPrefix = "[Demo]";
 
-    // Collect demo category IDs before products are deleted
-    const { data: demoProds } = await supabase.from("products").select("category_id").eq("is_demo", true);
-    const demoCatIds = [...new Set((demoProds || []).map(p => p.category_id).filter(Boolean))];
+    // 1. Collect IDs by known patterns
+    const { data: products } = await supabase.from("products").select("id, category_id").in("name", demoProdNames);
+    const prodIds = (products || []).map(p => p.id);
+    const catIds = [...new Set((products || []).map(p => p.category_id).filter(Boolean))];
+    const { data: variants } = prodIds.length > 0 ? await supabase.from("product_variants").select("id").in("product_id", prodIds) : { data: [] };
+    const varIds = (variants || []).map(v => v.id);
+    const { data: customers } = await supabase.from("customers").select("id").in("phone", demoCustPhones);
+    const custIds = (customers || []).map(c => c.id);
+    const { data: suppliers } = await supabase.from("suppliers").select("id").in("name", demoSupNames);
+    const supIds = (suppliers || []).map(s => s.id);
+    const { data: categories } = await supabase.from("categories").select("id").in("name", demoCatNames);
+    const allCatIds = [...new Set([...catIds, ...(categories || []).map(c => c.id)])];
 
-    // Delete child records first (stock_movements, loyalty_transactions)
+    // 2. Collect sales linked to demo customers or demo variants
+    let saleIds: string[] = [];
+    if (custIds.length > 0) {
+      const { data: salesByCust } = await supabase.from("sales").select("id").in("customer_id", custIds);
+      saleIds = (salesByCust || []).map(s => s.id);
+    }
+    if (varIds.length > 0) {
+      const { data: salesByVar } = await supabase.from("sale_items").select("sale_id").in("variant_id", varIds);
+      const moreIds = [...new Set((salesByVar || []).map(s => s.sale_id).filter(Boolean))];
+      saleIds = [...new Set([...saleIds, ...moreIds])];
+    }
+
+    // 3. Collect POs linked to demo suppliers
+    let poIds: string[] = [];
+    if (supIds.length > 0) {
+      const { data: pos } = await supabase.from("purchase_orders").select("id").in("supplier_id", supIds);
+      poIds = (pos || []).map(p => p.id);
+    }
+
+    // 4. Collect expenses by description prefix
+    const { data: expenses } = await supabase.from("expenses").select("id").ilike("description", `${demoExpDescPrefix}%`);
+    const expIds = (expenses || []).map(e => e.id);
+
+    // 5. Collect loyalty transactions linked to demo customers
+    let loyaltyIds: string[] = [];
+    if (custIds.length > 0) {
+      const { data: loyalty } = await supabase.from("loyalty_transactions").select("id").in("customer_id", custIds);
+      loyaltyIds = (loyalty || []).map(l => l.id);
+    }
+    // Also collect by reference to demo sales
     if (saleIds.length > 0) {
-      await supabase.from("stock_movements").delete().in("reference_id", saleIds).eq("reference_type", "sale");
-      await supabase.from("loyalty_transactions").delete().in("reference_id", saleIds);
+      const { data: loyaltyBySale } = await supabase.from("loyalty_transactions").select("id").in("reference_id", saleIds);
+      const moreLoyalty = (loyaltyBySale || []).map(l => l.id);
+      loyaltyIds = [...new Set([...loyaltyIds, ...moreLoyalty])];
+    }
+
+    // 6. Collect stock movements linked to demo variants, sales, or POs
+    let stockIds: string[] = [];
+    if (varIds.length > 0) {
+      const { data: sm } = await supabase.from("stock_movements").select("id").in("variant_id", varIds);
+      stockIds = (sm || []).map(s => s.id);
+    }
+    if (saleIds.length > 0) {
+      const { data: smBySale } = await supabase.from("stock_movements").select("id").in("reference_id", saleIds).eq("reference_type", "sale");
+      const moreSm = (smBySale || []).map(s => s.id);
+      stockIds = [...new Set([...stockIds, ...moreSm])];
     }
     if (poIds.length > 0) {
-      await supabase.from("stock_movements").delete().in("reference_id", poIds).eq("reference_type", "purchase_order");
-    }
-    // Also delete any orphan stock_movements linked to demo variants
-    await supabase.from("stock_movements").delete().eq("is_demo", true);
-
-    // Main tables (in FK-safe order; categories excluded — handled below)
-    const tables = ["sale_items", "sales", "loyalty_transactions", "expenses", "purchase_order_items", "purchase_orders", "stock_movements", "product_variants", "products", "customers", "suppliers"];
-    for (const table of tables) {
-      await supabase.from(table as never).delete().eq("is_demo", true);
+      const { data: smByPO } = await supabase.from("stock_movements").select("id").in("reference_id", poIds).eq("reference_type", "purchase_order");
+      const moreSm = (smByPO || []).map(s => s.id);
+      stockIds = [...new Set([...stockIds, ...moreSm])];
     }
 
-    // Delete demo categories (categories table may not have is_demo column)
-    if (demoCatIds.length > 0) {
-      await supabase.from("categories").delete().in("id", demoCatIds);
+    // 7. Delete in FK-safe order
+    if (stockIds.length > 0) await supabase.from("stock_movements").delete().in("id", stockIds);
+    if (loyaltyIds.length > 0) await supabase.from("loyalty_transactions").delete().in("id", loyaltyIds);
+    if (saleIds.length > 0) {
+      await supabase.from("sale_items").delete().in("sale_id", saleIds);
+      await supabase.from("sales").delete().in("id", saleIds);
     }
+    if (poIds.length > 0) {
+      await supabase.from("purchase_order_items").delete().in("po_id", poIds);
+      await supabase.from("purchase_orders").delete().in("id", poIds);
+    }
+    if (expIds.length > 0) await supabase.from("expenses").delete().in("id", expIds);
+    if (varIds.length > 0) await supabase.from("product_variants").delete().in("id", varIds);
+    if (prodIds.length > 0) await supabase.from("products").delete().in("id", prodIds);
+    if (custIds.length > 0) await supabase.from("customers").delete().in("id", custIds);
+    if (supIds.length > 0) await supabase.from("suppliers").delete().in("id", supIds);
+    if (allCatIds.length > 0) await supabase.from("categories").delete().in("id", allCatIds);
 
     return { success: true, message: "All demo data removed successfully" };
   } catch (err: unknown) {
