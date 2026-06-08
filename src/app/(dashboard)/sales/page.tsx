@@ -69,6 +69,7 @@ export default function SalesPage() {
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState<BusinessSettings | null>(null);
   const [notes, setNotes] = useState("");
+  const [cashierName, setCashierName] = useState("");
 
   // Sale details
   const [selectedSale, setSelectedSale] = useState<SaleRow | null>(null);
@@ -77,11 +78,18 @@ export default function SalesPage() {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [cancelling, setCancelling] = useState(false);
 
-  // Cashier name for receipt
-  const [cashierName, setCashierName] = useState("");
+  // Last created sale for print
+  const [lastCreatedSale, setLastCreatedSale] = useState<{ sale: SaleRow; items: SaleItem[] } | null>(null);
+  const printedRef = useRef<{ sale: SaleRow; items: SaleItem[] } | null>(null);
+
+  const openNewSale = () => {
+    resetSaleForm();
+    setShowSale(true);
+  };
 
   const barcodeRef = useRef<HTMLInputElement>(null);
   const supabaseRef = useRef(supabase);
+  const openNewSaleRef = useRef<() => void>(() => {});
   useEffect(() => { supabaseRef.current = supabase; }, [supabase]);
 
   const loadData = useCallback(async () => {
@@ -118,6 +126,44 @@ export default function SalesPage() {
     };
     init();
   }, [loadData, loadSettings, loadProfile]);
+
+  // Focus barcode input when opening new sale dialog
+  useEffect(() => {
+    if (showSale) {
+      setTimeout(() => barcodeRef.current?.focus(), 100);
+    }
+  }, [showSale]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (showSale) setShowSale(false);
+        if (showDetails) setShowDetails(false);
+        if (showProductPicker) setShowProductPicker(false);
+      }
+      if (e.key === "Enter" && !showSale && !showDetails && document.activeElement === document.body) {
+        openNewSaleRef.current();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showSale, showDetails, showProductPicker]);
+
+  // Auto-print after save if lastCreatedSale exists
+  useEffect(() => {
+    if (lastCreatedSale && printedRef.current !== lastCreatedSale) {
+      printReceipt({
+        sale: lastCreatedSale.sale as unknown as Sale,
+        items: lastCreatedSale.items,
+        businessName: settings?.business_name || "Resh POS",
+        tagline: settings?.tagline || "",
+        footer: settings?.receipt_footer || "",
+        cashierName,
+      });
+      printedRef.current = lastCreatedSale;
+    }
+  }, [lastCreatedSale, settings?.business_name, settings?.tagline, settings?.receipt_footer, cashierName]);
 
   const loadFilteredSales = useCallback(async () => {
     setLoading(true);
@@ -461,6 +507,14 @@ export default function SalesPage() {
       });
     }
 
+    // Fetch sale items for printing
+    const { data: createdSaleItems } = await supabase
+      .from("sale_items")
+      .select("*, product_variants(*, products(name))")
+      .eq("sale_id", sale.id);
+    
+    setLastCreatedSale({ sale: sale as unknown as SaleRow, items: createdSaleItems || [] });
+
     toast.success(`Sale ${sale.invoice_no} recorded! (${formatCurrency(finalTotal)})`);
     setShowSale(false);
     resetSaleForm();
@@ -505,7 +559,7 @@ export default function SalesPage() {
       // For retail sales, return ml and bottles based on variant size
       // We can determine sale type from selectedSale
       const isRetail = selectedSale.sale_type === "retail";
-      const returnMl = isRetail ? item.quantity * (variant.size_ml || 0) : item.quantity * (variant.size_ml || 0);
+      const returnMl = isRetail ? item.quantity * (variant.size_ml || 0) : (item.wholesale_ml_sold || 0);
 
       const prevMl = currentVariant.stock_ml || 0;
       const newMl = prevMl + returnMl;
@@ -564,11 +618,6 @@ export default function SalesPage() {
     setFilterDateFrom(""); setFilterDateTo(""); setFilterCustomer("");
     setFilterPaymentMethod(""); setFilterOrderType("");
     setFilterSaleType(""); setFilterStatus(""); setSearchInvoice("");
-  };
-
-  const openNewSale = () => {
-    resetSaleForm();
-    setShowSale(true);
   };
 
   const handleExportSales = () => {
@@ -1069,6 +1118,9 @@ export default function SalesPage() {
 
           <DialogFooter>
             <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+            <Button variant="outline" onClick={handleSaveSale} disabled={saving || cart.length === 0}>
+              <Printer className="h-4 w-4 mr-1" /> Save & Print
+            </Button>
             <Button variant="gold" onClick={handleSaveSale} disabled={saving || cart.length === 0}>
               {saving ? <><ShoppingCart className="h-4 w-4 mr-1 animate-spin" /> Saving...</> : `Record Sale — ${formatCurrency(finalTotal)}`}
             </Button>

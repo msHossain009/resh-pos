@@ -26,6 +26,7 @@ export interface Variant {
   low_stock_threshold: number;
   barcode: string | null;
   active: boolean;
+  status: "active" | "inactive" | "cancelled";
   created_at: string;
   // New ml/bottle fields
   stock_ml: number;

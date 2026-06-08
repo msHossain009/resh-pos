@@ -390,9 +390,9 @@ export default function InvoicesPage() {
                 <TableBody>
                   {saleItems.map((item) => (
                     <TableRow key={item.id}>
-                      <TableCell className="text-sm">
-                        {item.product_variants?.products?.name || item.product_name_snapshot || "Item"} ({item.product_variants?.size_ml || item.variant_size_ml_snapshot}ml)
-                      </TableCell>
+                       <TableCell className="text-sm">
+                         {item.product_variants?.products?.name || item.product_name_snapshot || "Item"} ({item.product_variants?.size_ml ?? item.variant_size_ml_snapshot ?? 0}ml)
+                       </TableCell>
                       <TableCell>{formatCurrency(item.unit_price)}</TableCell>
                       <TableCell>{item.quantity}</TableCell>
                       <TableCell className="text-right">{formatCurrency(item.subtotal)}</TableCell>

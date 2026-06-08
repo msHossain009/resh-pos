@@ -139,9 +139,9 @@ export default function ProductsPage() {
       retail_cost: String(v.retail_cost ?? v.cost ?? ""),
       wholesale_price_per_ml: String(v.wholesale_price_per_ml ?? ""),
       wholesale_cost_per_ml: String(v.wholesale_cost_per_ml ?? ""),
-      stock_ml: String(v.stock_ml ?? v.stock_quantity ?? 0),
+      stock_ml: String(v.stock_ml ?? 0),
       bottle_stock_qty: String(v.bottle_stock_qty ?? 0),
-      low_stock_ml_threshold: String(v.low_stock_ml_threshold ?? v.low_stock_threshold ?? 100),
+      low_stock_ml_threshold: String(v.low_stock_ml_threshold ?? 100),
       low_bottle_threshold: String(v.low_bottle_threshold ?? 10),
       sku: v.sku || "",
       barcode: v.barcode || "",
@@ -160,22 +160,27 @@ export default function ProductsPage() {
     for (const size of DEFAULT_VARIANT_SIZES) {
       if (existingSizes.has(size)) continue;
       const multiplier = size / 50; // scale relative to 50ml
+      const retailPrice = Math.round(basePrice * multiplier);
+      const retailCost = Math.round(basePrice * 0.6 * multiplier);
       newVariants.push({
         size_ml: size,
         concentration: "EDP",
-        price: Math.round(basePrice * multiplier),
-        cost: Math.round(basePrice * 0.6 * multiplier),
-        retail_price: Math.round(basePrice * multiplier),
-        retail_cost: Math.round(basePrice * 0.6 * multiplier),
+        price: retailPrice,
+        cost: retailCost,
+        retail_price: retailPrice,
+        retail_cost: retailCost,
         wholesale_price_per_ml: Math.round(basePrice / 50 * 0.8 * 100) / 100,
         wholesale_cost_per_ml: Math.round(basePrice / 50 * 0.5 * 100) / 100,
         stock_ml: 0,
+        stock_quantity: 0,
         bottle_stock_qty: 0,
         low_stock_ml_threshold: 100,
+        low_stock_threshold: 100,
         low_bottle_threshold: 10,
         sku: "",
         barcode: null,
         active: true,
+        status: "active",
       });
     }
 
@@ -202,14 +207,15 @@ export default function ProductsPage() {
       wholesale_price_per_ml: parseFloat(variantForm.wholesale_price_per_ml) || null,
       wholesale_cost_per_ml: parseFloat(variantForm.wholesale_cost_per_ml) || null,
       stock_ml: parseFloat(variantForm.stock_ml) || 0,
-      stock_quantity: parseInt(variantForm.stock_ml) || 0,
+      stock_quantity: Math.round(parseFloat(variantForm.stock_ml) || 0),
       bottle_stock_qty: parseInt(variantForm.bottle_stock_qty) || 0,
       low_stock_ml_threshold: parseFloat(variantForm.low_stock_ml_threshold) || 100,
-      low_stock_threshold: parseInt(variantForm.low_stock_ml_threshold) || 10,
+      low_stock_threshold: Math.round(parseFloat(variantForm.low_stock_ml_threshold) || 100),
       low_bottle_threshold: parseInt(variantForm.low_bottle_threshold) || 10,
       sku: variantForm.sku,
       barcode: variantForm.barcode || null,
       active: variantForm.active,
+      status: variantForm.active ? "active" : "inactive",
     };
 
     setVariants((prev) => {
@@ -265,15 +271,16 @@ export default function ProductsPage() {
           retail_cost: v.retail_cost ?? null,
           wholesale_price_per_ml: v.wholesale_price_per_ml ?? null,
           wholesale_cost_per_ml: v.wholesale_cost_per_ml ?? null,
-          stock_ml: v.stock_ml ?? v.stock_quantity ?? 0,
-          stock_quantity: Math.round(v.stock_ml ?? v.stock_quantity ?? 0),
+          stock_ml: v.stock_ml ?? 0,
+          stock_quantity: Math.round(v.stock_ml ?? 0),
           bottle_stock_qty: v.bottle_stock_qty ?? 0,
-          low_stock_ml_threshold: v.low_stock_ml_threshold ?? v.low_stock_threshold ?? 100,
-          low_stock_threshold: Math.round(v.low_stock_ml_threshold ?? v.low_stock_threshold ?? 10),
+          low_stock_ml_threshold: v.low_stock_ml_threshold ?? 100,
+          low_stock_threshold: Math.round(v.low_stock_ml_threshold ?? 100),
           low_bottle_threshold: v.low_bottle_threshold ?? 10,
           sku: v.sku || undefined,
           barcode: v.barcode || null,
           active: form.status === "Cancelled" ? false : (v.active !== false),
+          status: form.status === "Cancelled" ? "cancelled" : (form.status === "Active" ? "active" : "inactive"),
         };
         if (v.id) {
           await supabase.from("product_variants").update(variantData).eq("id", v.id);
@@ -301,15 +308,16 @@ export default function ProductsPage() {
           retail_cost: v.retail_cost ?? null,
           wholesale_price_per_ml: v.wholesale_price_per_ml ?? null,
           wholesale_cost_per_ml: v.wholesale_cost_per_ml ?? null,
-          stock_ml: v.stock_ml ?? v.stock_quantity ?? 0,
-          stock_quantity: Math.round(v.stock_ml ?? v.stock_quantity ?? 0),
+          stock_ml: v.stock_ml ?? 0,
+          stock_quantity: Math.round(v.stock_ml ?? 0),
           bottle_stock_qty: v.bottle_stock_qty ?? 0,
-          low_stock_ml_threshold: v.low_stock_ml_threshold ?? v.low_stock_threshold ?? 100,
-          low_stock_threshold: Math.round(v.low_stock_ml_threshold ?? v.low_stock_threshold ?? 10),
+          low_stock_ml_threshold: v.low_stock_ml_threshold ?? 100,
+          low_stock_threshold: Math.round(v.low_stock_ml_threshold ?? 100),
           low_bottle_threshold: v.low_bottle_threshold ?? 10,
           sku: v.sku || undefined,
           barcode: v.barcode || null,
           active: v.active !== false,
+          status: "active",
         };
         await supabase.from("product_variants").insert(variantData);
       }
@@ -324,9 +332,10 @@ export default function ProductsPage() {
 
   const handleToggleActive = async (product: Product) => {
     const newActive = !product.active;
+    const newStatus = newActive ? "active" : "inactive";
     const { error } = await supabase
       .from("products")
-      .update({ active: newActive })
+      .update({ active: newActive, status: newStatus })
       .eq("id", product.id);
     if (error) { toast.error("Failed to toggle status"); return; }
     toast.success(newActive ? "Product activated" : "Product deactivated");

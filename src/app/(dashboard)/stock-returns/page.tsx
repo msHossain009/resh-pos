@@ -20,7 +20,7 @@ import type { Sale, SaleItem, StockMovement } from "@/lib/types";
 import { Search, RotateCcw, Undo2, History } from "lucide-react";
 import toast from "react-hot-toast";
 
-type ReturnableSale = Pick<Sale, "id" | "invoice_no" | "sale_date" | "total" | "status" | "created_at"> & {
+type ReturnableSale = Pick<Sale, "id" | "invoice_no" | "sale_date" | "total" | "status" | "created_at" | "sale_type"> & {
   customers: { name: string } | null;
 };
 
@@ -146,10 +146,10 @@ export default function StockReturnsPage() {
         if (!currentVariant) continue;
 
         // Calculate stock to restore
-        const isRetail = selectedSale.status === "completed" && item.wholesale_ml_sold === 0;
+        const isRetail = selectedSale.sale_type === "retail";
         const perfumeMlToRestore = isRetail
           ? item.returnQty * (variant.size_ml || 0)
-          : (item.returnQty * item.wholesale_ml_sold) / item.quantity;
+          : (item.returnQty * (item.wholesale_ml_sold || 0)) / (item.quantity || 1);
         const bottlesToRestore = isRetail ? item.returnQty : 0;
 
         const prevMl = currentVariant.stock_ml || 0;

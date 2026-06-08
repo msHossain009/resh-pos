@@ -40,10 +40,10 @@ export async function addDemoData(): Promise<{ success: boolean; message: string
   try {
     // 1. Categories
     const cats = ["Floral", "Oriental", "Woody", "Fresh", "Oud", "Citrus"];
-    const { data: catData } = await supabase.from("categories").insert(
-      cats.map((c) => ({ name: c, is_demo: true })),
+    const { data: catData, error: catError } = await supabase.from("categories").insert(
+      cats.map((c) => ({ name: c })),
     ).select();
-    if (!catData) throw new Error("Failed to create categories");
+    if (catError || !catData) throw new Error("Failed to create categories: " + (catError?.message || "unknown error"));
 
     // 2. Products with variants
     const demoProducts = [
@@ -368,6 +368,10 @@ export async function removeDemoData(): Promise<{ success: boolean; message: str
     const { data: demoPOs } = await supabase.from("purchase_orders").select("id").eq("is_demo", true);
     const poIds = demoPOs?.map((p) => p.id) || [];
 
+    // Collect demo category IDs before products are deleted
+    const { data: demoProds } = await supabase.from("products").select("category_id").eq("is_demo", true);
+    const demoCatIds = [...new Set((demoProds || []).map(p => p.category_id).filter(Boolean))];
+
     // Delete child records first (stock_movements, loyalty_transactions)
     if (saleIds.length > 0) {
       await supabase.from("stock_movements").delete().in("reference_id", saleIds).eq("reference_type", "sale");
@@ -379,11 +383,17 @@ export async function removeDemoData(): Promise<{ success: boolean; message: str
     // Also delete any orphan stock_movements linked to demo variants
     await supabase.from("stock_movements").delete().eq("is_demo", true);
 
-    // Main tables (in FK-safe order)
-    const tables = ["sale_items", "sales", "loyalty_transactions", "expenses", "purchase_order_items", "purchase_orders", "stock_movements", "product_variants", "products", "customers", "suppliers", "categories"];
+    // Main tables (in FK-safe order; categories excluded — handled below)
+    const tables = ["sale_items", "sales", "loyalty_transactions", "expenses", "purchase_order_items", "purchase_orders", "stock_movements", "product_variants", "products", "customers", "suppliers"];
     for (const table of tables) {
       await supabase.from(table as never).delete().eq("is_demo", true);
     }
+
+    // Delete demo categories (categories table may not have is_demo column)
+    if (demoCatIds.length > 0) {
+      await supabase.from("categories").delete().in("id", demoCatIds);
+    }
+
     return { success: true, message: "All demo data removed successfully" };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";

@@ -73,10 +73,10 @@ export default function SettingsPage() {
             business_name: business.business_name,
             tagline: business.tagline,
             currency: business.currency,
-            tax_rate: parseFloat(business.tax_rate) || 5,
+            tax_rate: parseFloat(business.tax_rate) ?? 5,
             receipt_footer: business.receipt_footer,
-            default_low_perfume_threshold: parseFloat(business.default_low_perfume_threshold) || 100,
-            default_low_bottle_threshold: parseInt(business.default_low_bottle_threshold) || 10,
+            default_low_perfume_threshold: parseFloat(business.default_low_perfume_threshold) ?? 100,
+            default_low_bottle_threshold: parseInt(business.default_low_bottle_threshold) ?? 10,
           })
           .eq("id", existing.id);
         if (error) throw error;
@@ -87,10 +87,10 @@ export default function SettingsPage() {
             business_name: business.business_name,
             tagline: business.tagline,
             currency: business.currency,
-            tax_rate: parseFloat(business.tax_rate) || 5,
+            tax_rate: parseFloat(business.tax_rate) ?? 5,
             receipt_footer: business.receipt_footer,
-            default_low_perfume_threshold: parseFloat(business.default_low_perfume_threshold) || 100,
-            default_low_bottle_threshold: parseInt(business.default_low_bottle_threshold) || 10,
+            default_low_perfume_threshold: parseFloat(business.default_low_perfume_threshold) ?? 100,
+            default_low_bottle_threshold: parseInt(business.default_low_bottle_threshold) ?? 10,
           });
         if (error) throw error;
       }
