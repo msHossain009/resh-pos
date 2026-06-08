@@ -142,16 +142,16 @@ export default function StockReturnsPage() {
         const variant = item.product_variants;
         if (!variant) continue;
 
-        // Fetch current variant stock
-        const { data: currentVariant } = await supabase
+        const { data: currentVariant, error: cvError } = await supabase
           .from("product_variants")
           .select("stock_ml, bottle_stock_qty")
           .eq("id", item.variant_id)
           .single();
 
-        if (!currentVariant) continue;
+        if (cvError || !currentVariant) {
+          throw new Error(`Failed to fetch variant stock: ${cvError?.message}`);
+        }
 
-        // Calculate stock to restore
         const isRetail = selectedSale.sale_type === "retail";
         const perfumeMlToRestore = isRetail
           ? item.returnQty * (variant.size_ml || 0)
@@ -163,8 +163,7 @@ export default function StockReturnsPage() {
         const prevBottle = currentVariant.bottle_stock_qty || 0;
         const newBottle = prevBottle + bottlesToRestore;
 
-        // Update variant stock
-        await supabase
+        const { error: vuError } = await supabase
           .from("product_variants")
           .update({
             stock_ml: newMl,
@@ -173,8 +172,9 @@ export default function StockReturnsPage() {
           })
           .eq("id", item.variant_id);
 
-        // Record stock movement
-        await supabase.from("stock_movements").insert({
+        if (vuError) throw new Error(`Variant stock update failed: ${vuError.message}`);
+
+        const { error: smError } = await supabase.from("stock_movements").insert({
           variant_id: item.variant_id,
           type: "return",
           quantity_change: Math.round(newMl - prevMl),
@@ -192,42 +192,40 @@ export default function StockReturnsPage() {
           created_by: userId,
         });
 
-        // Update sale_item returned_quantity
+        if (smError) throw new Error(`Stock movement insert failed: ${smError.message}`);
+
         const newReturnedQty = (item.returned_quantity || 0) + item.returnQty;
-        await supabase
+        const { error: siError } = await supabase
           .from("sale_items")
           .update({ returned_quantity: newReturnedQty })
           .eq("id", item.id);
+
+        if (siError) throw new Error(`Sale item update failed: ${siError.message}`);
       }
 
-      // Check if all items are now fully returned
-      const allItems = await supabase
+      const { data: allItems, error: aiError } = await supabase
         .from("sale_items")
         .select("quantity, returned_quantity")
         .eq("sale_id", selectedSale.id);
 
-      const allFullyReturned = allItems.data?.every(
+      if (aiError) throw new Error(`Failed to query sale items: ${aiError.message}`);
+
+      const allFullyReturned = allItems?.every(
         (si) => si.returned_quantity >= si.quantity
       );
 
-      if (allFullyReturned) {
-        await supabase
-          .from("sales")
-          .update({
-            status: "refunded",
-            return_reason: returnReason,
-            last_returned_at: new Date().toISOString(),
-          })
-          .eq("id", selectedSale.id);
-      } else {
-        await supabase
-          .from("sales")
-          .update({
-            return_reason: returnReason,
-            last_returned_at: new Date().toISOString(),
-          })
-          .eq("id", selectedSale.id);
-      }
+      const statusUpdate: Record<string, unknown> = {
+        return_reason: returnReason,
+        last_returned_at: new Date().toISOString(),
+      };
+      if (allFullyReturned) statusUpdate.status = "refunded";
+
+      const { error: sError } = await supabase
+        .from("sales")
+        .update(statusUpdate)
+        .eq("id", selectedSale.id);
+
+      if (sError) throw new Error(`Sale status update failed: ${sError.message}`);
 
       const returnCount = itemsToReturn.reduce((sum, item) => sum + item.returnQty, 0);
       const totalValue = itemsToReturn.reduce((sum, item) => sum + item.returnQty * getEffectiveUnitPrice(item), 0);
@@ -237,7 +235,7 @@ export default function StockReturnsPage() {
       loadSales();
     } catch (err) {
       console.error("Return error:", err);
-      toast.error("Failed to process return");
+      toast.error(err instanceof Error ? err.message : "Failed to process return");
     } finally {
       setProcessing(false);
     }
@@ -245,14 +243,19 @@ export default function StockReturnsPage() {
 
   const loadReturnHistory = useCallback(async () => {
     setHistoryLoading(true);
-    const { data } = await supabaseRef.current
+    const { data, error } = await supabaseRef.current
       .from("stock_movements")
-      .select("*, sales!reference_id(invoice_no)")
+      .select("*")
       .eq("type", "return")
       .order("created_at", { ascending: false })
       .limit(50);
 
-    if (data) setReturnHistory(data as unknown as ReturnHistoryEntry[]);
+    if (error) {
+      console.error("Failed to load return history:", error);
+      toast.error("Failed to load return history");
+    } else if (data) {
+      setReturnHistory(data as unknown as ReturnHistoryEntry[]);
+    }
     setHistoryLoading(false);
   }, []);
 
@@ -484,17 +487,20 @@ export default function StockReturnsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {returnHistory.map((entry) => (
+                {returnHistory.map((entry) => {
+                  const invMatch = entry.reason?.match(/Return from (\S+)/);
+                  return (
                   <TableRow key={entry.id}>
                     <TableCell className="text-xs text-muted-foreground">{formatDateFull(entry.created_at)}</TableCell>
                     <TableCell className="font-mono text-xs font-medium">
-                      {entry.sales?.invoice_no || "N/A"}
+                      {invMatch?.[1] || "N/A"}
                     </TableCell>
                     <TableCell>{(entry.perfume_ml_change || 0) > 0 ? `+${entry.perfume_ml_change}ml` : "-"}</TableCell>
                     <TableCell>{(entry.bottle_qty_change || 0) > 0 ? `+${entry.bottle_qty_change}` : "-"}</TableCell>
                     <TableCell className="text-xs max-w-xs truncate">{entry.reason || "-"}</TableCell>
                   </TableRow>
-                ))}
+                );
+              })}
               </TableBody>
             </Table>
           )}
