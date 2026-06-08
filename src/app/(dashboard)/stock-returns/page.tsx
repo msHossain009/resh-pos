@@ -448,7 +448,7 @@ export default function StockReturnsPage() {
             <Button
               variant="gold"
               onClick={processReturn}
-              disabled={processing || saleItems.filter((i) => i.returnQty > 0).length === 0 || !returnReason.trim()}
+              disabled={processing}
             >
               {processing ? (
                 <><RotateCcw className="h-4 w-4 mr-1 animate-spin" /> Processing...</>
