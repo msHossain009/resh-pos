@@ -29,6 +29,12 @@ export async function getCurrentUserId(): Promise<string | null> {
   return user?.id ?? null;
 }
 
+/** Helper: get demo product IDs by name list */
+async function getDemoProductIds(supabase: ReturnType<typeof createClient>, names: string[]): Promise<string[]> {
+  const { data } = await supabase.from("products").select("id").in("name", names);
+  return (data || []).map(p => p.id);
+}
+
 /** Add demo data to the system. Returns number of records added. */
 export async function addDemoData(): Promise<{ success: boolean; message: string }> {
   const supabase = createClient();
@@ -38,33 +44,43 @@ export async function addDemoData(): Promise<{ success: boolean; message: string
   const userId = user.id;
 
   try {
-    // 1. Categories
+    // 1. Categories — check if data is returned
     const cats = ["Floral", "Oriental", "Woody", "Fresh", "Oud", "Citrus"];
     const { data: catData, error: catError } = await supabase.from("categories").insert(
       cats.map((c) => ({ name: c })),
     ).select();
-    if (catError || !catData) throw new Error("Failed to create categories: " + (catError?.message || "unknown error"));
+    if (catError) throw new Error("Failed to create categories: " + catError.message);
+    if (!catData || catData.length === 0) throw new Error("Categories insert returned no data — possible RLS issue");
+    // Build a lookup map instead of re-finding every time
+    const catMap: Record<string, string> = {};
+    for (const c of catData) { catMap[c.name] = c.id; }
 
     // 2. Products with variants
     const demoProducts = [
-      { name: "Rose Oud", description: "A luxurious blend of rose and oud", category_id: catData.find(c => c.name === "Floral")?.id || null, category: "Floral" },
-      { name: "Musk Al Tahara", description: "Pure white musk fragrance", category_id: catData.find(c => c.name === "Fresh")?.id || null, category: "Fresh" },
-      { name: "Black Opium", description: "Intense oriental vanilla coffee", category_id: catData.find(c => c.name === "Oriental")?.id || null, category: "Oriental" },
-      { name: "Santal 33", description: "Sandlewood and cedar masterpiece", category_id: catData.find(c => c.name === "Woody")?.id || null, category: "Woody" },
-      { name: "Oud Wood", description: "Premium agarwood oil", category_id: catData.find(c => c.name === "Oud")?.id || null, category: "Oud" },
-      { name: "Aqua Di Gio", description: "Fresh aquatic citrus", category_id: catData.find(c => c.name === "Citrus")?.id || null, category: "Citrus" },
-      { name: "Mystic Oud", description: "Dark resinous oud with spice", category_id: catData.find(c => c.name === "Oud")?.id || null, category: "Oud" },
+      { name: "Rose Oud", description: "A luxurious blend of rose and oud", catLabel: "Floral" },
+      { name: "Musk Al Tahara", description: "Pure white musk fragrance", catLabel: "Fresh" },
+      { name: "Black Opium", description: "Intense oriental vanilla coffee", catLabel: "Oriental" },
+      { name: "Santal 33", description: "Sandlewood and cedar masterpiece", catLabel: "Woody" },
+      { name: "Oud Wood", description: "Premium agarwood oil", catLabel: "Oud" },
+      { name: "Aqua Di Gio", description: "Fresh aquatic citrus", catLabel: "Citrus" },
+      { name: "Mystic Oud", description: "Dark resinous oud with spice", catLabel: "Oud" },
     ];
 
     const sizes = [6, 15, 30, 50, 100];
     const concentrations = ["EDP", "EDT", "Parfum", "EDP", "Extrait"];
+    let productErrors: string[] = [];
 
     for (const prod of demoProducts) {
-      const { data: newProd } = await supabase.from("products").insert({
-        name: prod.name, description: prod.description, category: prod.category,
-        category_id: prod.category_id, active: true,
+      const { data: newProd, error: prodErr } = await supabase.from("products").insert({
+        name: prod.name,
+        description: prod.description,
+        category: prod.catLabel,
+        category_id: catMap[prod.catLabel] || null,
       }).select().single();
-      if (!newProd) continue;
+      if (prodErr || !newProd) {
+        productErrors.push(`${prod.name}: ${prodErr?.message || "no data returned"}`);
+        continue;
+      }
 
       const variants = sizes.map((size, idx) => {
         const basePrice = 300 + Math.floor(Math.random() * 700);
@@ -85,12 +101,22 @@ export async function addDemoData(): Promise<{ success: boolean; message: string
           bottle_stock_qty: Math.floor(Math.random() * 30) + 5,
           low_stock_ml_threshold: 100,
           low_bottle_threshold: 10,
-          sku: `${prod.name.substring(0, 3).toUpperCase()}-${size}ml`,
+          sku: `${prod.name.substring(0, 3).toUpperCase()}-${size}ml-${Date.now().toString(36).slice(-4)}`,
           barcode: `DEMO${String(Math.floor(100000 + Math.random() * 900000))}`,
           active: true,
         };
       });
-      await supabase.from("product_variants").insert(variants);
+      const { error: varErr } = await supabase.from("product_variants").insert(variants);
+      if (varErr) productErrors.push(`${prod.name} variants: ${varErr.message}`);
+    }
+
+    // If no products were created, fail with the accumulated errors
+    const createdProdIds = Object.values(catMap).length > 0
+      ? await getDemoProductIds(supabase, demoProducts.map(p => p.name))
+      : [];
+    if (createdProdIds.length === 0) {
+      const detail = productErrors.length > 0 ? " Errors: " + productErrors.join("; ") : "";
+      throw new Error("No demo products found" + detail);
     }
 
     // 3. Customers
@@ -124,12 +150,6 @@ export async function addDemoData(): Promise<{ success: boolean; message: string
       { description: "[Demo] Electricity bill", amount: 4200, category: "Utility", date: today, payment_method: "bKash", created_by: userId },
     ];
     await supabase.from("expenses").insert(demoExpenses);
-
-    // 6. Fetch demo variants for later use — match by product names
-    const prodNames = demoProducts.map(p => p.name);
-    const { data: createdProds } = await supabase.from("products").select("id").in("name", prodNames);
-    const createdProdIds = (createdProds || []).map(p => p.id);
-    if (createdProdIds.length === 0) throw new Error("No demo products found");
 
     const { data: allVariants } = await supabase
       .from("product_variants")
