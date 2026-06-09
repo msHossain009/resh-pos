@@ -57,7 +57,21 @@ export default function AdminUsersPage() {
     setLoading(false);
   };
 
-  useEffect(() => { loadUsers(); }, []);
+  useEffect(() => {
+    const fetchUsers = async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) {
+        toast.error("Failed to load users");
+      } else {
+        setUsers(data || []);
+      }
+      setLoading(false);
+    };
+    fetchUsers();
+  }, []);
 
   const handleSaveRole = async (userId: string) => {
     setSavingId(userId);
@@ -101,7 +115,7 @@ export default function AdminUsersPage() {
       if (!res.ok) { toast.error(data.error || "Failed to delete user"); return; }
       setUsers((prev) => prev.filter((u) => u.id !== user.id));
       toast.success("User deleted");
-    } catch (err) {
+    } catch {
       toast.error("Failed to delete user");
     }
   };
@@ -126,10 +140,8 @@ export default function AdminUsersPage() {
       setShowAddDialog(false);
       setAddForm({ email: "", password: "", full_name: "", role: "cashier" });
       loadUsers();
-    } catch (err) {
-      toast.error("Failed to create user");
-    } finally {
-      setAdding(false);
+    } catch {
+      toast.error("Failed to add user");
     }
   };
 

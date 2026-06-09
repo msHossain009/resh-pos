@@ -24,7 +24,7 @@ import { can } from "@/lib/helpers";
 import { useProfile } from "@/lib/profile-context";
 import { DEFAULT_VARIANT_SIZES } from "@/lib/constants";
 import type { Product, Variant } from "@/lib/types";
-import { Plus, Pencil, Search, Eye, Download, Wand2, Trash2, Package } from "lucide-react";
+import { Plus, Pencil, Search, Eye, EyeOff, Download, Wand2, Trash2, Package } from "lucide-react";
 import toast from "react-hot-toast";
 
 const CONCENTRATIONS = ["EDP", "EDT", "EDC", "Parfum", "Extrait", "Cologne"] as const;
