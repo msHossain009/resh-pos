@@ -2,12 +2,18 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  DialogFooter, DialogClose,
+} from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { can } from "@/lib/helpers";
 import { useProfile } from "@/lib/profile-context";
-import { Shield, Loader2, Save, X } from "lucide-react";
+import { Shield, Loader2, Save, X, Plus, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import toast from "react-hot-toast";
 import type { UserProfile } from "@/lib/types";
@@ -33,22 +39,25 @@ export default function AdminUsersPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editRole, setEditRole] = useState<UserProfile["role"]>("cashier");
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [addForm, setAddForm] = useState({ email: "", password: "", full_name: "", role: "cashier" as UserProfile["role"] });
+  const [adding, setAdding] = useState(false);
   const supabase = createClient();
 
-  useEffect(() => {
-    (async () => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .order("created_at", { ascending: false });
-      if (error) {
-        toast.error("Failed to load users");
-      } else {
-        setUsers(data || []);
-      }
-      setLoading(false);
-    })();
-  }, [supabase]);
+  const loadUsers = async () => {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) {
+      toast.error("Failed to load users");
+    } else {
+      setUsers(data || []);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { loadUsers(); }, []);
 
   const handleSaveRole = async (userId: string) => {
     setSavingId(userId);
@@ -64,6 +73,64 @@ export default function AdminUsersPage() {
     }
     setSavingId(null);
     setEditingId(null);
+  };
+
+  const handleToggleActive = async (user: UserProfile) => {
+    const newActive = !user.active;
+    const { error } = await supabase
+      .from("profiles")
+      .update({ active: newActive })
+      .eq("id", user.id);
+    if (error) {
+      toast.error("Failed to toggle status: " + error.message);
+    } else {
+      setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, active: newActive } : u)));
+      toast.success(newActive ? "User activated" : "User deactivated");
+    }
+  };
+
+  const handleDeleteUser = async (user: UserProfile) => {
+    if (!window.confirm(`Delete user "${user.full_name || user.email}" permanently? This cannot be undone.`)) return;
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error || "Failed to delete user"); return; }
+      setUsers((prev) => prev.filter((u) => u.id !== user.id));
+      toast.success("User deleted");
+    } catch (err) {
+      toast.error("Failed to delete user");
+    }
+  };
+
+  const handleAddUser = async () => {
+    if (!addForm.email || !addForm.password || !addForm.full_name) {
+      toast.error("All fields are required"); return;
+    }
+    if (addForm.password.length < 6) {
+      toast.error("Password must be at least 6 characters"); return;
+    }
+    setAdding(true);
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(addForm),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error || "Failed to create user"); setAdding(false); return; }
+      toast.success("User created");
+      setShowAddDialog(false);
+      setAddForm({ email: "", password: "", full_name: "", role: "cashier" });
+      loadUsers();
+    } catch (err) {
+      toast.error("Failed to create user");
+    } finally {
+      setAdding(false);
+    }
   };
 
   const isAdmin = can(currentProfile?.role, "manage_settings");
@@ -87,9 +154,14 @@ export default function AdminUsersPage() {
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">User Management</h1>
-        <p className="text-sm text-muted-foreground">Manage user roles and permissions.</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">User Management</h1>
+          <p className="text-sm text-muted-foreground">Manage user roles and permissions.</p>
+        </div>
+        <Button variant="gold" onClick={() => { setAddForm({ email: "", password: "", full_name: "", role: "cashier" }); setShowAddDialog(true); }}>
+          <Plus className="h-4 w-4 mr-1" /> Add User
+        </Button>
       </div>
 
       <Card>
@@ -145,26 +217,33 @@ export default function AdminUsersPage() {
                         </Badge>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {editingId === user.id ? (
-                          <div className="flex justify-end gap-1">
-                            <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
-                              <X className="h-4 w-4" />
-                            </Button>
-                            <Button size="sm" variant="gold" className="gap-1" onClick={() => handleSaveRole(user.id)} disabled={savingId === user.id}>
-                              {savingId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                              Save
-                            </Button>
-                          </div>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => { setEditingId(user.id); setEditRole(user.role); }}
-                            disabled={user.id === currentProfile?.id}
-                          >
-                            Change Role
-                          </Button>
-                        )}
+                        <div className="flex justify-end gap-1">
+                          {editingId === user.id ? (
+                            <>
+                              <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
+                                <X className="h-4 w-4" />
+                              </Button>
+                              <Button size="sm" variant="gold" className="gap-1" onClick={() => handleSaveRole(user.id)} disabled={savingId === user.id}>
+                                {savingId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                                Save
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button size="sm" variant="ghost" onClick={() => handleToggleActive(user)} title={user.active ? "Deactivate" : "Activate"}>
+                                {user.active ? <ToggleRight className="h-4 w-4 text-green-600" /> : <ToggleLeft className="h-4 w-4 text-muted-foreground" />}
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={() => { setEditingId(user.id); setEditRole(user.role); }} disabled={user.id === currentProfile?.id}>
+                                Change Role
+                              </Button>
+                              {user.id !== currentProfile?.id && (
+                                <Button size="sm" variant="ghost" onClick={() => handleDeleteUser(user)} title="Delete user">
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              )}
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -212,6 +291,46 @@ export default function AdminUsersPage() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add User</DialogTitle>
+            <DialogDescription>Create a new user account.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label>Full Name *</Label>
+              <Input value={addForm.full_name} onChange={(e) => setAddForm({ ...addForm, full_name: e.target.value })} placeholder="John Doe" />
+            </div>
+            <div className="space-y-2">
+              <Label>Email *</Label>
+              <Input type="email" value={addForm.email} onChange={(e) => setAddForm({ ...addForm, email: e.target.value })} placeholder="john@example.com" />
+            </div>
+            <div className="space-y-2">
+              <Label>Password *</Label>
+              <Input type="password" value={addForm.password} onChange={(e) => setAddForm({ ...addForm, password: e.target.value })} placeholder="Min 6 characters" />
+            </div>
+            <div className="space-y-2">
+              <Label>Role</Label>
+              <Select value={addForm.role} onValueChange={(v) => setAddForm({ ...addForm, role: v as UserProfile["role"] })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {roleOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+            <Button variant="gold" onClick={handleAddUser} disabled={adding}>
+              {adding ? "Creating..." : "Create User"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

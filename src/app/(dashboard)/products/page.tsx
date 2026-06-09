@@ -24,7 +24,7 @@ import { can } from "@/lib/helpers";
 import { useProfile } from "@/lib/profile-context";
 import { DEFAULT_VARIANT_SIZES } from "@/lib/constants";
 import type { Product, Variant } from "@/lib/types";
-import { Plus, Pencil, Search, Eye, EyeOff, Download, Wand2, Trash2, Package } from "lucide-react";
+import { Plus, Pencil, Search, Eye, Download, Wand2, Trash2, Package } from "lucide-react";
 import toast from "react-hot-toast";
 
 const CONCENTRATIONS = ["EDP", "EDT", "EDC", "Parfum", "Extrait", "Cologne"] as const;
@@ -288,7 +288,7 @@ export default function ProductsPage() {
     try {
       if (editing) {
         const { error: pe } = await supabase.from("products").update(productData).eq("id", editing.id);
-        if (pe) { toast.error("Failed to update product"); setSaving(false); return; }
+        if (pe) { toast.error("Failed to update product: " + pe.message); setSaving(false); return; }
 
         for (const v of variants) {
           const variantData: Record<string, unknown> = {
@@ -313,10 +313,10 @@ export default function ProductsPage() {
           };
           if (v.id) {
             const { error: ve } = await supabase.from("product_variants").update(variantData).eq("id", v.id);
-            if (ve) { toast.error("Failed to update variant: " + ve.message); setSaving(false); return; }
+            if (ve) { toast.error("Variant update failed: " + ve.message); setSaving(false); return; }
           } else {
             const { error: ve } = await supabase.from("product_variants").insert(variantData);
-            if (ve) { toast.error("Failed to create variant: " + ve.message); setSaving(false); return; }
+            if (ve) { toast.error("Variant create failed: " + ve.message); setSaving(false); return; }
           }
         }
         toast.success("Product updated");
@@ -326,7 +326,7 @@ export default function ProductsPage() {
           .insert(productData)
           .select()
           .single();
-        if (pe || !newProduct) { toast.error("Failed to create product"); setSaving(false); return; }
+        if (pe || !newProduct) { toast.error("Failed to create product: " + (pe?.message || "Unknown")); setSaving(false); return; }
 
         for (const v of variants) {
           const variantData: Record<string, unknown> = {
@@ -366,23 +366,15 @@ export default function ProductsPage() {
     }
   };
 
-  const handleToggleActive = async (product: Product) => {
+  const handleDeleteProduct = async (product: Product) => {
+    if (!window.confirm(`Delete "${product.name}" permanently? This cannot be undone.`)) return;
     try {
-      const newActive = !product.active;
-      const { error } = await supabase
-        .from("products")
-        .update({ active: newActive })
-        .eq("id", product.id);
-      if (error) { toast.error("Failed to toggle status"); return; }
-      const { error: ve } = await supabase
-        .from("product_variants")
-        .update({ active: newActive, status: newActive ? "active" : "inactive" })
-        .eq("product_id", product.id);
-      if (ve) { toast.error("Product toggled but variant sync failed"); }
-      toast.success(newActive ? "Product activated" : "Product deactivated");
+      const { error } = await supabase.from("products").delete().eq("id", product.id);
+      if (error) { toast.error("Failed to delete: " + error.message); return; }
+      toast.success(`"${product.name}" deleted`);
       fetchData();
     } catch (err) {
-      console.error("Toggle active error:", err);
+      console.error("Delete product error:", err);
       toast.error("An unexpected error occurred");
     }
   };
@@ -594,20 +586,23 @@ export default function ProductsPage() {
                       </TableCell>
                       <TableCell className="text-muted-foreground text-xs">{formatDate(product.created_at)}</TableCell>
                       <TableCell>
-                        {can(profile?.role, "edit") ? (
-                          <div className="flex gap-1">
+                        <div className="flex gap-1">
+                          {can(profile?.role, "edit") && (
                             <Button variant="ghost" size="icon" onClick={() => openEdit(product)} title="Edit product">
                               <Pencil className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="icon" onClick={() => handleToggleActive(product)} title={product.active ? "Deactivate" : "Reactivate"}>
-                              {product.active ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          )}
+                          {can(profile?.role, "delete") && (
+                            <Button variant="ghost" size="icon" onClick={() => handleDeleteProduct(product)} title="Delete product">
+                              <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
-                          </div>
-                        ) : (
-                          <Button variant="ghost" size="icon" onClick={() => openView(product)} title="View product">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        )}
+                          )}
+                          {!can(profile?.role, "edit") && (
+                            <Button variant="ghost" size="icon" onClick={() => openView(product)} title="View product">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   );

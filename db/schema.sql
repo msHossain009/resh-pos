@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS product_variants (
 CREATE TABLE IF NOT EXISTS profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   full_name TEXT,
-  role TEXT CHECK role IN ('admin', 'manager', 'cashier', 'viewer') DEFAULT 'cashier',
+  role TEXT CHECK (role IN ('admin', 'manager', 'cashier', 'viewer')) DEFAULT 'cashier',
   active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -139,7 +139,7 @@ CREATE TABLE IF NOT EXISTS sales (
   due_amount NUMERIC(12,2) DEFAULT 0,
   tax_rate NUMERIC DEFAULT 0,
   tax_amount NUMERIC(12,2) DEFAULT 0,
-  discount_type TEXT CHECK discount_type IN ('amount', 'percent') DEFAULT 'amount',
+  discount_type TEXT CHECK (discount_type IN ('amount', 'percent')) DEFAULT 'amount',
   created_by UUID REFERENCES auth.users(id),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -193,7 +193,7 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
   supplier_id UUID NOT NULL REFERENCES suppliers(id),
   order_date DATE DEFAULT CURRENT_DATE,
   expected_date DATE,
-  status TEXT DEFAULT 'Pending' CHECK status IN ('Pending', 'Partially Received', 'Received', 'Cancelled'),
+  status TEXT DEFAULT 'Pending' CHECK (status IN ('Pending', 'Partially Received', 'Received', 'Cancelled')),
   total_amount NUMERIC(12,2) DEFAULT 0,
   notes TEXT,
   created_by UUID REFERENCES auth.users(id),
@@ -234,7 +234,7 @@ CREATE TABLE IF NOT EXISTS expenses (
 CREATE TABLE IF NOT EXISTS stock_movements (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   variant_id UUID NOT NULL REFERENCES product_variants(id) ON DELETE CASCADE,
-  type TEXT CHECK type IN ('sale', 'purchase_receive', 'adjustment', 'return', 'damage'),
+  type TEXT CHECK (type IN ('sale', 'purchase_receive', 'adjustment', 'return', 'damage')),
   quantity_change INTEGER NOT NULL,
   previous_quantity INTEGER NOT NULL,
   new_quantity INTEGER NOT NULL,
@@ -252,7 +252,7 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   table_name TEXT NOT NULL,
   record_id UUID,
-  action TEXT CHECK action IN ('create', 'update', 'delete', 'refund', 'receive_stock', 'adjust_stock'),
+  action TEXT CHECK (action IN ('create', 'update', 'delete', 'refund', 'receive_stock', 'adjust_stock')),
   old_data JSONB,
   new_data JSONB,
   created_by UUID REFERENCES auth.users(id),
@@ -294,6 +294,20 @@ ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 -- ============================================================
 -- RLS POLICIES
 -- ============================================================
+
+-- Drop all existing policies first (idempotent re-run)
+DO $$
+DECLARE
+  pol RECORD;
+BEGIN
+  FOR pol IN (
+    SELECT policyname, tablename
+    FROM pg_policies
+    WHERE schemaname = 'public'
+  ) LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON %I', pol.policyname, pol.tablename);
+  END LOOP;
+END $$;
 
 -- Profiles: user reads own, admin manages all
 CREATE POLICY "read_own_profile" ON profiles FOR SELECT USING (auth.uid() = id);
