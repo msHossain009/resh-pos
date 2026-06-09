@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,12 +13,13 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { CopyScreenshotButton } from "@/components/ui/copy-screenshot-button";
 import { formatCurrency, downloadCSV } from "@/lib/utils";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
 } from "recharts";
-import { Download, TrendingUp, TrendingDown, Search } from "lucide-react";
+import { Download, TrendingUp, TrendingDown, Search, DollarSign, Receipt, PiggyBank, ShoppingBag, CreditCard, Hash, BarChart3 } from "lucide-react";
 import toast from "react-hot-toast";
 
 const COLORS = ["#c9a96e", "#6B2737", "#2D6A4F", "#1a1a2e", "#8B5CF6", "#EC4899", "#F59E0B", "#10B981", "#3B82F6", "#EF4444"];
@@ -61,6 +62,14 @@ export default function ReportsPage() {
   const [customers, setCustomers] = useState<{ id: string; name: string; customer_type?: string }[]>([]);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const supabase = createClient();
+
+  const revenueChartRef = useRef<HTMLDivElement>(null);
+  const paymentChartRef = useRef<HTMLDivElement>(null);
+  const orderChartRef = useRef<HTMLDivElement>(null);
+  const saleTypeChartRef = useRef<HTMLDivElement>(null);
+  const topProductsRef = useRef<HTMLDivElement>(null);
+  const topProfitRef = useRef<HTMLDivElement>(null);
+  const topCustomersRef = useRef<HTMLDivElement>(null);
 
   const getDateRange = useCallback(() => {
     const now = new Date();
@@ -368,30 +377,61 @@ export default function ReportsPage() {
 
       {/* Summary Cards */}
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-5">
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-xs text-muted-foreground">Revenue</CardTitle></CardHeader>
-          <CardContent><p className="text-xl font-bold text-gold">{formatCurrency(summary.revenue)}</p></CardContent>
+        <Card className="h-full hover:shadow-md transition-shadow">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-xs text-muted-foreground font-medium tracking-wide uppercase">Revenue</CardTitle>
+              <DollarSign className="h-4 w-4 text-gold/60" />
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <p className="text-xl font-bold text-gold">{formatCurrency(summary.revenue)}</p>
+          </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-xs text-muted-foreground">COGS (actual)</CardTitle></CardHeader>
-          <CardContent><p className="text-xl font-bold text-muted-foreground">{formatCurrency(summary.cogs)}</p></CardContent>
+        <Card className="h-full hover:shadow-md transition-shadow">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-xs text-muted-foreground font-medium tracking-wide uppercase">COGS (actual)</CardTitle>
+              <Receipt className="h-4 w-4 text-muted-foreground/60" />
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <p className="text-xl font-bold text-muted-foreground">{formatCurrency(summary.cogs)}</p>
+          </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-xs text-muted-foreground">Gross Profit</CardTitle></CardHeader>
-          <CardContent>
+        <Card className="h-full hover:shadow-md transition-shadow">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-xs text-muted-foreground font-medium tracking-wide uppercase">Gross Profit</CardTitle>
+              <TrendingUp className={`h-4 w-4 ${summary.grossProfit >= 0 ? "text-green-600/60" : "text-destructive/60"}`} />
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
             <p className={`text-xl font-bold flex items-center gap-1 ${summary.grossProfit >= 0 ? "text-green-600" : "text-destructive"}`}>
               {summary.grossProfit >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
               {formatCurrency(summary.grossProfit)}
             </p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-xs text-muted-foreground">Expenses</CardTitle></CardHeader>
-          <CardContent><p className="text-xl font-bold text-destructive">{formatCurrency(summary.expensesTotal)}</p></CardContent>
+        <Card className="h-full hover:shadow-md transition-shadow">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-xs text-muted-foreground font-medium tracking-wide uppercase">Expenses</CardTitle>
+              <ShoppingBag className="h-4 w-4 text-destructive/60" />
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <p className="text-xl font-bold text-destructive">{formatCurrency(summary.expensesTotal)}</p>
+          </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-xs text-muted-foreground">Net Profit</CardTitle></CardHeader>
-          <CardContent>
+        <Card className="h-full hover:shadow-md transition-shadow">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-xs text-muted-foreground font-medium tracking-wide uppercase">Net Profit</CardTitle>
+              <PiggyBank className={`h-4 w-4 ${summary.netProfit >= 0 ? "text-green-600/60" : "text-destructive/60"}`} />
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
             <p className={`text-xl font-bold flex items-center gap-1 ${summary.netProfit >= 0 ? "text-green-600" : "text-destructive"}`}>
               {summary.netProfit >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
               {formatCurrency(summary.netProfit)}
@@ -401,20 +441,61 @@ export default function ReportsPage() {
       </div>
 
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        <Card><CardHeader className="pb-2"><CardTitle className="text-xs text-muted-foreground">Discount</CardTitle></CardHeader>
-          <CardContent><p className="text-lg font-bold">{formatCurrency(summary.discount)}</p></CardContent></Card>
-        <Card><CardHeader className="pb-2"><CardTitle className="text-xs text-muted-foreground">Tax Collected</CardTitle></CardHeader>
-          <CardContent><p className="text-lg font-bold">{formatCurrency(summary.tax)}</p></CardContent></Card>
-        <Card><CardHeader className="pb-2"><CardTitle className="text-xs text-muted-foreground">Transactions</CardTitle></CardHeader>
-          <CardContent><p className="text-lg font-bold">{summary.transactions}</p></CardContent></Card>
-        <Card><CardHeader className="pb-2"><CardTitle className="text-xs text-muted-foreground">Avg Order Value</CardTitle></CardHeader>
-          <CardContent><p className="text-lg font-bold">{formatCurrency(summary.avgOrderValue)}</p></CardContent></Card>
+        <Card className="h-full hover:shadow-md transition-shadow">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-xs text-muted-foreground font-medium tracking-wide uppercase">Discount</CardTitle>
+              <Receipt className="h-4 w-4 text-destructive/60" />
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <p className="text-lg font-bold">{formatCurrency(summary.discount)}</p>
+          </CardContent>
+        </Card>
+        <Card className="h-full hover:shadow-md transition-shadow">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-xs text-muted-foreground font-medium tracking-wide uppercase">Tax Collected</CardTitle>
+              <CreditCard className="h-4 w-4 text-muted-foreground/60" />
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <p className="text-lg font-bold">{formatCurrency(summary.tax)}</p>
+          </CardContent>
+        </Card>
+        <Card className="h-full hover:shadow-md transition-shadow">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-xs text-muted-foreground font-medium tracking-wide uppercase">Transactions</CardTitle>
+              <Hash className="h-4 w-4 text-muted-foreground/60" />
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <p className="text-lg font-bold">{summary.transactions}</p>
+          </CardContent>
+        </Card>
+        <Card className="h-full hover:shadow-md transition-shadow">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-xs text-muted-foreground font-medium tracking-wide uppercase">Avg Order Value</CardTitle>
+              <BarChart3 className="h-4 w-4 text-muted-foreground/60" />
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <p className="text-lg font-bold">{formatCurrency(summary.avgOrderValue)}</p>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* Chart */}
-        <Card>
-          <CardHeader><CardTitle>Revenue by Day</CardTitle></CardHeader>
+        <Card ref={revenueChartRef}>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Revenue by Day</CardTitle>
+              <CopyScreenshotButton targetRef={revenueChartRef} />
+            </div>
+          </CardHeader>
           <CardContent>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
@@ -432,8 +513,13 @@ export default function ReportsPage() {
         </Card>
 
         {/* Payment Breakdown */}
-        <Card>
-          <CardHeader><CardTitle>Payment Method</CardTitle></CardHeader>
+        <Card ref={paymentChartRef}>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Payment Method</CardTitle>
+              <CopyScreenshotButton targetRef={paymentChartRef} />
+            </div>
+          </CardHeader>
           <CardContent>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
@@ -451,8 +537,13 @@ export default function ReportsPage() {
         </Card>
 
         {/* Order Type + Sale Type */}
-        <Card>
-          <CardHeader><CardTitle>Order Type Breakdown</CardTitle></CardHeader>
+        <Card ref={orderChartRef}>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Order Type Breakdown</CardTitle>
+              <CopyScreenshotButton targetRef={orderChartRef} />
+            </div>
+          </CardHeader>
           <CardContent>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
@@ -470,8 +561,13 @@ export default function ReportsPage() {
         </Card>
 
         {/* Sale Type Breakdown */}
-        <Card>
-          <CardHeader><CardTitle>Retail vs Wholesale</CardTitle></CardHeader>
+        <Card ref={saleTypeChartRef}>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Retail vs Wholesale</CardTitle>
+              <CopyScreenshotButton targetRef={saleTypeChartRef} />
+            </div>
+          </CardHeader>
           <CardContent>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
@@ -509,8 +605,13 @@ export default function ReportsPage() {
 
       {/* Product Rankings */}
       <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader><CardTitle>Top Products by Revenue</CardTitle></CardHeader>
+        <Card ref={topProductsRef}>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Top Products by Revenue</CardTitle>
+              <CopyScreenshotButton targetRef={topProductsRef} />
+            </div>
+          </CardHeader>
           <CardContent className="p-0">
             <Table>
               <TableHeader>
@@ -534,8 +635,13 @@ export default function ReportsPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader><CardTitle>Top Products by Profit</CardTitle></CardHeader>
+        <Card ref={topProfitRef}>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Top Products by Profit</CardTitle>
+              <CopyScreenshotButton targetRef={topProfitRef} />
+            </div>
+          </CardHeader>
           <CardContent className="p-0">
             <Table>
               <TableHeader>
@@ -565,8 +671,13 @@ export default function ReportsPage() {
       </div>
 
       {/* Customer Ranking */}
-      <Card>
-        <CardHeader><CardTitle>Top Customers</CardTitle></CardHeader>
+      <Card ref={topCustomersRef}>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Top Customers</CardTitle>
+            <CopyScreenshotButton targetRef={topCustomersRef} />
+          </div>
+        </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>

@@ -68,7 +68,7 @@ export async function addDemoData(): Promise<{ success: boolean; message: string
 
     const sizes = [6, 15, 30, 50, 100];
     const concentrations = ["EDP", "EDT", "Parfum", "EDP", "Extrait"];
-    let productErrors: string[] = [];
+    const productErrors: string[] = [];
 
     for (const prod of demoProducts) {
       const { data: newProd, error: prodErr } = await supabase.from("products").insert({

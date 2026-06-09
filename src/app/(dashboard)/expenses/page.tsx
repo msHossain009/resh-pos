@@ -61,7 +61,13 @@ export default function ExpensesPage() {
     if (filterDateFrom) query = query.gte("date", filterDateFrom);
     if (filterDateTo) query = query.lte("date", filterDateTo);
 
-    const { data } = await query;
+    const { data, error } = await query;
+    if (error) {
+      console.error("Fetch expenses error:", error);
+      toast.error("Failed to load expenses: " + (error?.message || "Unknown error"));
+      setLoading(false);
+      return;
+    }
     if (data) setExpenses(data);
     setLoading(false);
   }, [supabase, filterCategory, filterPayment, filterDateFrom, filterDateTo]);
@@ -110,33 +116,41 @@ export default function ExpensesPage() {
     setSaving(true);
     const userId = await getCurrentUserId();
 
-    const payload = {
-      description: form.description,
-      amount,
-      category: form.category || null,
-      date: form.date,
-      payment_method: form.payment_method || null,
-      notes: form.notes || null,
-      created_by: userId,
-    };
+    try {
+      const payload = {
+        description: form.description,
+        amount,
+        category: form.category || null,
+        date: form.date,
+        payment_method: form.payment_method || null,
+        notes: form.notes || null,
+        created_by: userId,
+      };
 
-    if (editing) {
-      const { error } = await supabase
-        .from("expenses")
-        .update(payload)
-        .eq("id", editing.id);
-      if (error) { toast.error("Failed to update"); setSaving(false); return; }
-      toast.success("Expense updated");
-    } else {
-      const { error } = await supabase.from("expenses").insert(payload);
-      if (error) { toast.error("Failed to create"); setSaving(false); return; }
-      toast.success("Expense added");
+      if (editing) {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { created_by, ...updatePayload } = payload;
+        const { error } = await supabase
+          .from("expenses")
+          .update(updatePayload)
+          .eq("id", editing.id);
+        if (error) { toast.error("Failed to update: " + error.message); setSaving(false); return; }
+        toast.success("Expense updated");
+      } else {
+        const { error } = await supabase.from("expenses").insert(payload);
+        if (error) { toast.error("Failed to create: " + error.message); setSaving(false); return; }
+        toast.success("Expense added");
+      }
+
+      setShowDialog(false);
+      resetForm();
+      fetchExpenses();
+    } catch (err) {
+      console.error("Expense save error:", err);
+      toast.error("An unexpected error occurred");
+    } finally {
+      setSaving(false);
     }
-
-    setShowDialog(false);
-    resetForm();
-    fetchExpenses();
-    setSaving(false);
   };
 
   const handleDelete = async (expense: Expense) => {

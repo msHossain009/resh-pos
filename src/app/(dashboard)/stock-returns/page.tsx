@@ -20,7 +20,7 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { formatCurrency, formatDateFull } from "@/lib/utils";
 import { getCurrentUserId } from "@/lib/helpers";
 import type { Sale, SaleItem, StockMovement } from "@/lib/types";
-import { Search, RotateCcw, Undo2, History, List } from "lucide-react";
+import { Search, RotateCcw, Undo2, History } from "lucide-react";
 import toast from "react-hot-toast";
 
 type ReturnableSale = Pick<Sale, "id" | "invoice_no" | "sale_date" | "total" | "status" | "created_at" | "sale_type" | "subtotal" | "discount" | "discount_type"> & {

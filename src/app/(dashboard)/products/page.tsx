@@ -24,7 +24,7 @@ import { can } from "@/lib/helpers";
 import { useProfile } from "@/lib/profile-context";
 import { DEFAULT_VARIANT_SIZES } from "@/lib/constants";
 import type { Product, Variant } from "@/lib/types";
-import { Plus, Pencil, Search, EyeOff, Download, Wand2, Trash2 } from "lucide-react";
+import { Plus, Pencil, Search, Eye, EyeOff, Download, Wand2, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 
 const CONCENTRATIONS = ["EDP", "EDT", "EDC", "Parfum", "Extrait", "Cologne"] as const;
@@ -474,8 +474,8 @@ export default function ProductsPage() {
                             <Button variant="ghost" size="icon" onClick={() => openEdit(product)}>
                               <Pencil className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="icon" onClick={() => handleToggleActive(product)}>
-                              {product.active ? <EyeOff className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                            <Button variant="ghost" size="icon" onClick={() => handleToggleActive(product)} title={product.active ? "Deactivate" : "Reactivate"}>
+                              {product.active ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                             </Button>
                           </div>
                         )}
