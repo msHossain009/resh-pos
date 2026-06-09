@@ -24,7 +24,7 @@ import { can } from "@/lib/helpers";
 import { useProfile } from "@/lib/profile-context";
 import { DEFAULT_VARIANT_SIZES } from "@/lib/constants";
 import type { Product, Variant } from "@/lib/types";
-import { Plus, Pencil, Search, Eye, EyeOff, Download, Wand2, Trash2 } from "lucide-react";
+import { Plus, Pencil, Search, Eye, EyeOff, Download, Wand2, Trash2, Package } from "lucide-react";
 import toast from "react-hot-toast";
 
 const CONCENTRATIONS = ["EDP", "EDT", "EDC", "Parfum", "Extrait", "Cologne"] as const;
@@ -40,6 +40,7 @@ export default function ProductsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [showDialog, setShowDialog] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
+  const [viewing, setViewing] = useState(false);
   const [saving, setSaving] = useState(false);
   const supabase = createClient();
 
@@ -72,6 +73,14 @@ export default function ProductsPage() {
     active: true,
   });
 
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [quickAddForm, setQuickAddForm] = useState({ name: "", size_ml: "50", retail_price: "", wholesale_price_per_ml: "" });
+  const [quickSaving, setQuickSaving] = useState(false);
+  const [showPriceEdit, setShowPriceEdit] = useState(false);
+  const [priceEditIdx, setPriceEditIdx] = useState<number | null>(null);
+  const [priceEditForm, setPriceEditForm] = useState({ retail_price: "", wholesale_price_per_ml: "" });
+  const [showInactiveVariants, setShowInactiveVariants] = useState(false);
+
   const loadProducts = useCallback(async () => {
     return await Promise.all([
       supabase.from("products").select("*, product_variants(*)").order("created_at", { ascending: false }),
@@ -81,24 +90,53 @@ export default function ProductsPage() {
 
   useEffect(() => {
     (async () => {
-      const [p, c] = await loadProducts();
-      if (p.data) setProducts(p.data);
-      if (c.data) setCategories(c.data);
-      setLoading(false);
+      try {
+        const [p, c] = await loadProducts();
+        if (p.data) setProducts(p.data);
+        if (c.data) setCategories(c.data);
+      } catch (err) {
+        console.error("Failed to load products:", err);
+        toast.error("Failed to load products");
+      } finally {
+        setLoading(false);
+      }
     })();
   }, [loadProducts]);
 
   const fetchData = async () => {
-    const [p, c] = await loadProducts();
-    if (p.data) setProducts(p.data);
-    if (c.data) setCategories(c.data);
-    setLoading(false);
+    try {
+      const [p, c] = await loadProducts();
+      if (p.data) setProducts(p.data);
+      if (c.data) setCategories(c.data);
+    } catch (err) {
+      console.error("Failed to fetch products:", err);
+      toast.error("Failed to load products");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openView = (product: Product) => {
+    setViewing(true);
+    setEditing(product);
+    setForm({
+      name: product.name,
+      description: product.description || "",
+      category_id: product.category_id || "",
+      category: product.category || "",
+      image_url: product.image_url || "",
+      active: product.active,
+      status: product.active ? "Active" : "Inactive",
+    });
+    setVariants(product.product_variants?.map((v: Variant) => ({ ...v })) || []);
+    setShowDialog(true);
   };
 
   const resetForm = () => {
     setForm({ name: "", description: "", category_id: "", category: "", image_url: "", active: true, status: "Active" });
     setVariants([]);
     setEditing(null);
+    setViewing(false);
   };
 
   const openEdit = (product: Product) => {
@@ -230,16 +268,6 @@ export default function ProductsPage() {
     resetVariantForm();
   };
 
-  const removeVariant = (idx: number) => {
-    const v = variants[idx];
-    if (v?.id && editing) {
-      setVariants((prev) => prev.map((item, i) => i === idx ? { ...item, active: false } : item));
-      toast("Variant marked inactive");
-    } else {
-      setVariants((prev) => prev.filter((_, i) => i !== idx));
-    }
-  };
-
   const handleSave = async () => {
     if (!form.name) { toast.error("Product name is required"); return; }
     if (variants.length === 0) { toast.error("Add at least one variant"); return; }
@@ -341,12 +369,16 @@ export default function ProductsPage() {
   const handleToggleActive = async (product: Product) => {
     try {
       const newActive = !product.active;
-      const newStatus = newActive ? "active" : "inactive";
       const { error } = await supabase
         .from("products")
-        .update({ active: newActive, status: newStatus })
+        .update({ active: newActive })
         .eq("id", product.id);
       if (error) { toast.error("Failed to toggle status"); return; }
+      const { error: ve } = await supabase
+        .from("product_variants")
+        .update({ active: newActive, status: newActive ? "active" : "inactive" })
+        .eq("product_id", product.id);
+      if (ve) { toast.error("Product toggled but variant sync failed"); }
       toast.success(newActive ? "Product activated" : "Product deactivated");
       fetchData();
     } catch (err) {
@@ -356,13 +388,101 @@ export default function ProductsPage() {
   };
 
   const handleExport = () => {
-    const headers = ["Name", "Category", "Variants", "Total Stock (ml)", "Status", "Created"];
-    const rows = filtered.map((p) => [
-      p.name, p.category || "-", String(p.product_variants?.length || 0),
-      String(totalStockMl(p)), p.active ? "Active" : "Inactive", formatDate(p.created_at),
-    ]);
+    const headers = ["Name", "Category", "Active Variants", "Active Stock (ml)", "Status", "Created"];
+    const rows = filtered.map((p) => {
+      const activeVariants = p.product_variants?.filter(v => v.active !== false) || [];
+      const activeStockMl = activeVariants.reduce((sum, v) => sum + (v.stock_ml ?? v.stock_quantity ?? 0), 0);
+      return [
+        p.name, p.category || "-", String(activeVariants.length),
+        String(activeStockMl), p.active ? "Active" : "Inactive", formatDate(p.created_at),
+      ];
+    });
     downloadCSV(`products-${new Date().toISOString().split("T")[0]}.csv`, headers, rows);
     toast.success("CSV exported");
+  };
+
+  const handleQuickAddProduct = async () => {
+    const name = quickAddForm.name.trim();
+    const sizeMl = parseFloat(quickAddForm.size_ml);
+    const retailPrice = parseFloat(quickAddForm.retail_price) || 0;
+    const wholesalePrice = parseFloat(quickAddForm.wholesale_price_per_ml) || 0;
+
+    if (!name) { toast.error("Product name is required"); return; }
+    if (!sizeMl || sizeMl <= 0) { toast.error("Valid size (ml) is required"); return; }
+
+    setQuickSaving(true);
+    try {
+      const { data: newProduct, error: pe } = await supabase
+        .from("products")
+        .insert({ name, description: null, category: null, category_id: null, image_url: null, active: true })
+        .select()
+        .single();
+      if (pe || !newProduct) { toast.error("Failed to create product: " + (pe?.message || "Unknown")); setQuickSaving(false); return; }
+
+      const { error: ve } = await supabase
+        .from("product_variants")
+        .insert({
+          product_id: newProduct.id,
+          size_ml: sizeMl,
+          concentration: "EDP",
+          price: retailPrice,
+          retail_price: retailPrice || null,
+          cost: 0, retail_cost: null,
+          wholesale_price_per_ml: wholesalePrice || null,
+          wholesale_cost_per_ml: null,
+          stock_ml: 0, stock_quantity: 0, bottle_stock_qty: 0,
+          low_stock_ml_threshold: 100, low_stock_threshold: 100, low_bottle_threshold: 10,
+          sku: null, barcode: null,
+          active: true, status: "active",
+        });
+      if (ve) { toast.error("Failed to create variant: " + ve.message); setQuickSaving(false); return; }
+
+      toast.success(`"${name}" added`);
+      setShowQuickAdd(false);
+      setQuickAddForm({ name: "", size_ml: "50", retail_price: "", wholesale_price_per_ml: "" });
+      fetchData();
+    } catch (err) {
+      console.error("Quick add error:", err);
+      toast.error("An unexpected error occurred");
+    } finally {
+      setQuickSaving(false);
+    }
+  };
+
+  const openQuickPriceEdit = (idx: number) => {
+    const v = variants[idx];
+    if (!v) return;
+    setPriceEditIdx(idx);
+    setPriceEditForm({
+      retail_price: String(v.retail_price ?? v.price ?? ""),
+      wholesale_price_per_ml: String(v.wholesale_price_per_ml ?? ""),
+    });
+    setShowPriceEdit(true);
+  };
+
+  const handleSaveQuickPrice = () => {
+    if (priceEditIdx === null) return;
+    const retailPrice = parseFloat(priceEditForm.retail_price) || 0;
+    const wholesalePrice = parseFloat(priceEditForm.wholesale_price_per_ml) || 0;
+    setVariants((prev) => prev.map((item, i) =>
+      i === priceEditIdx
+        ? { ...item, price: retailPrice, retail_price: retailPrice || null, wholesale_price_per_ml: wholesalePrice || null }
+        : item
+    ));
+    toast.success("Price updated — save the product to persist");
+    setShowPriceEdit(false);
+    setPriceEditIdx(null);
+  };
+
+  const toggleVariantActive = (idx: number) => {
+    const v = variants[idx];
+    if (v?.id && editing) {
+      const newActive = v.active === false;
+      setVariants((prev) => prev.map((item, i) => i === idx ? { ...item, active: newActive } : item));
+      toast(newActive ? "Variant will be reactivated on save" : "Variant will be deactivated on save");
+    } else {
+      setVariants((prev) => prev.filter((_, i) => i !== idx));
+    }
   };
 
   const filtered = products.filter((p) => {
@@ -375,7 +495,7 @@ export default function ProductsPage() {
         v.barcode?.toLowerCase().includes(searchLower)
       );
     if (!matchesSearch) return false;
-    if (categoryFilter && p.category !== categoryFilter) return false;
+    if (categoryFilter && p.category_id !== categoryFilter) return false;
     if (statusFilter === "active" && !p.active) return false;
     if (statusFilter === "inactive" && p.active) return false;
     return true;
@@ -396,9 +516,14 @@ export default function ProductsPage() {
             <Download className="h-4 w-4 mr-1" /> Export CSV
           </Button>
           {can(profile?.role, "create") && (
-            <Button variant="gold" onClick={() => { resetForm(); setShowDialog(true); }}>
-              <Plus className="h-4 w-4" /> Add Product
-            </Button>
+            <>
+              <Button variant="outline" onClick={() => { setQuickAddForm({ name: "", size_ml: "50", retail_price: "", wholesale_price_per_ml: "" }); setShowQuickAdd(true); }}>
+                <Package className="h-4 w-4" /> Quick Add
+              </Button>
+              <Button variant="gold" onClick={() => { resetForm(); setShowDialog(true); }}>
+                <Plus className="h-4 w-4" /> Add Product
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -413,7 +538,7 @@ export default function ProductsPage() {
           <SelectContent>
             <SelectItem value="all_cat">All Categories</SelectItem>
             {categories.map((cat) => (
-              <SelectItem key={cat.id} value={cat.name}>{cat.name}</SelectItem>
+              <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -469,15 +594,19 @@ export default function ProductsPage() {
                       </TableCell>
                       <TableCell className="text-muted-foreground text-xs">{formatDate(product.created_at)}</TableCell>
                       <TableCell>
-                        {can(profile?.role, "edit") && (
+                        {can(profile?.role, "edit") ? (
                           <div className="flex gap-1">
-                            <Button variant="ghost" size="icon" onClick={() => openEdit(product)}>
+                            <Button variant="ghost" size="icon" onClick={() => openEdit(product)} title="Edit product">
                               <Pencil className="h-4 w-4" />
                             </Button>
                             <Button variant="ghost" size="icon" onClick={() => handleToggleActive(product)} title={product.active ? "Deactivate" : "Reactivate"}>
                               {product.active ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                             </Button>
                           </div>
+                        ) : (
+                          <Button variant="ghost" size="icon" onClick={() => openView(product)} title="View product">
+                            <Eye className="h-4 w-4" />
+                          </Button>
                         )}
                       </TableCell>
                     </TableRow>
@@ -490,21 +619,21 @@ export default function ProductsPage() {
       </Card>
 
       {/* Product Dialog */}
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+      <Dialog open={showDialog} onOpenChange={(open) => { if (!open) resetForm(); setShowDialog(open); }}>
         <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editing ? "Edit Product" : "Add Product"}</DialogTitle>
-            <DialogDescription>Fill in the details below.</DialogDescription>
+            <DialogTitle>{viewing ? "View Product" : editing ? "Edit Product" : "Add Product"}</DialogTitle>
+            <DialogDescription>{viewing ? "Product details (read-only)." : "Fill in the details below."}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Product Name *</Label>
-                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="E.g. Rose Oud" />
+                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="E.g. Rose Oud" disabled={viewing} />
               </div>
               <div className="space-y-2">
                 <Label>Status</Label>
-                <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v, active: v === "Active" })}>
+                <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v, active: v === "Active" })} disabled={viewing}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {PRODUCT_STATUSES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
@@ -522,7 +651,7 @@ export default function ProductsPage() {
                     const cat = categories.find(c => c.id === v);
                     setForm({ ...form, category_id: v, category: cat?.name || v });
                   }
-                }}>
+                }} disabled={viewing}>
                   <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
                   <SelectContent>
                     {categories.map((cat) => (<SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>))}
@@ -530,70 +659,107 @@ export default function ProductsPage() {
                   </SelectContent>
                 </Select>
                 {(!form.category_id || !categories.some(c => c.id === form.category_id)) && (
-                  <Input className="mt-2" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Enter custom category" />
+                  <Input className="mt-2" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Enter custom category" disabled={viewing} />
                 )}
               </div>
               <div className="space-y-2">
                 <Label>Image URL (optional)</Label>
-                <Input value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} placeholder="https://..." />
+                <Input value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} placeholder="https://..." disabled={viewing} />
               </div>
             </div>
             <div className="space-y-2">
               <Label>Description</Label>
-              <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Top notes, middle notes, base notes..." />
+              <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Top notes, middle notes, base notes..." disabled={viewing} />
             </div>
 
-            <Separator />
+            {!viewing && <Separator />}
 
-            <div className="flex items-center justify-between gap-2">
-              <Label>Variants</Label>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={generateDefaultVariants}>
-                  <Wand2 className="h-4 w-4 mr-1" /> Generate Defaults
-                </Button>
-                <Button variant="outline" size="sm" onClick={openAddVariant}>
-                  <Plus className="h-4 w-4 mr-1" /> Add Variant
-                </Button>
+            {!viewing && (
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Label>Variants</Label>
+                  {variants.some(v => v.active === false) && (
+                    <button
+                      type="button"
+                      className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground cursor-pointer"
+                      onClick={() => setShowInactiveVariants(!showInactiveVariants)}
+                    >
+                      {showInactiveVariants ? "Hide inactive" : "Show inactive"}
+                    </button>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={generateDefaultVariants}>
+                    <Wand2 className="h-4 w-4 mr-1" /> Generate Defaults
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={openAddVariant}>
+                    <Plus className="h-4 w-4 mr-1" /> Add Variant
+                  </Button>
+                </div>
               </div>
-            </div>
+            )}
 
             {variants.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-2">No variants added yet. Click &ldquo;Generate Defaults&rdquo; for 6/15/30/50/100ml.</p>
+              !viewing && <p className="text-sm text-muted-foreground py-2">No variants added yet. Click &ldquo;Generate Defaults&rdquo; for 6/15/30/50/100ml.</p>
             ) : (
               <div className="space-y-2 max-h-60 overflow-y-auto">
-                {variants.map((v, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-2 rounded border text-sm">
-                    <div className="flex-1">
-                      <span className="font-medium">{v.size_ml}ml</span>
-                      <span className="text-muted-foreground ml-2">/ {v.concentration}</span>
-                      <span className="ml-2 text-gold">{formatCurrency(v.retail_price ?? v.price ?? 0)}</span>
-                      {v.wholesale_price_per_ml ? (
-                        <span className="ml-2 text-xs text-muted-foreground">WS: {formatCurrency(v.wholesale_price_per_ml)}/ml</span>
-                      ) : null}
-                      <span className="ml-2 text-xs">ML: {v.stock_ml ?? 0} | Bot: {v.bottle_stock_qty ?? 0}</span>
-                      <Badge variant={v.active !== false ? "success" : "secondary"} className="ml-1">
-                        {v.active !== false ? "Active" : "Inactive"}
-                      </Badge>
+                {variants.map((v, idx) => {
+                  if (v.active === false && !showInactiveVariants) return null;
+                  return (
+                    <div key={idx} className={`flex items-center justify-between p-2 rounded border text-sm ${v.active === false ? "opacity-60" : ""}`}>
+                      <div className="flex-1">
+                        <span className="font-medium">{v.size_ml}ml</span>
+                        <span className="text-muted-foreground ml-2">/ {v.concentration}</span>
+                        {!viewing ? (
+                          <button
+                            type="button"
+                            className="ml-2 text-gold underline underline-offset-2 hover:text-gold/80 cursor-pointer"
+                            onClick={() => openQuickPriceEdit(idx)}
+                            title="Edit price"
+                          >
+                            {formatCurrency(v.retail_price ?? v.price ?? 0)}
+                          </button>
+                        ) : (
+                          <span className="ml-2 text-gold">{formatCurrency(v.retail_price ?? v.price ?? 0)}</span>
+                        )}
+                        {v.wholesale_price_per_ml ? (
+                          <span className="ml-2 text-xs text-muted-foreground">WS: {formatCurrency(v.wholesale_price_per_ml)}/ml</span>
+                        ) : null}
+                        <span className="ml-2 text-xs">ML: {v.stock_ml ?? 0} | Bot: {v.bottle_stock_qty ?? 0}</span>
+                        <Badge variant={v.active !== false ? "success" : "secondary"} className="ml-1">
+                          {v.active !== false ? "Active" : "Inactive"}
+                        </Badge>
+                      </div>
+                      {!viewing && (
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => openEditVariant(idx)} title="Edit all variant details">
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          {v.id ? (
+                            <Button variant="ghost" size="icon" onClick={() => toggleVariantActive(idx)} title={v.active !== false ? "Deactivate" : "Reactivate"}>
+                              {v.active !== false ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </Button>
+                          ) : (
+                            <Button variant="ghost" size="icon" onClick={() => toggleVariantActive(idx)} title="Remove">
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => openEditVariant(idx)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => removeVariant(idx)}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
 
           <DialogFooter>
-            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-            <Button variant="gold" onClick={handleSave} disabled={saving}>
-              {saving ? "Saving..." : editing ? "Update" : "Create"}
-            </Button>
+            <DialogClose asChild><Button variant="outline">{viewing ? "Close" : "Cancel"}</Button></DialogClose>
+            {!viewing && (
+              <Button variant="gold" onClick={handleSave} disabled={saving}>
+                {saving ? "Saving..." : editing ? "Update" : "Create"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -696,6 +862,74 @@ export default function ProductsPage() {
             <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
             <Button variant="gold" onClick={saveVariant}>
               {editingVariantIdx !== null ? "Update" : "Add"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Quick Add Product Dialog */}
+      <Dialog open={showQuickAdd} onOpenChange={setShowQuickAdd}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Quick Add Product</DialogTitle>
+            <DialogDescription>Quickly create a product with a single variant.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label>Product Name *</Label>
+              <Input value={quickAddForm.name} onChange={(e) => setQuickAddForm({ ...quickAddForm, name: e.target.value })} placeholder="E.g. Rose Oud" />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-2">
+                <Label>Size (ml) *</Label>
+                <Input type="number" min="1" value={quickAddForm.size_ml} onChange={(e) => setQuickAddForm({ ...quickAddForm, size_ml: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Retail Price</Label>
+                <Input type="number" min="0" step="any" value={quickAddForm.retail_price} onChange={(e) => setQuickAddForm({ ...quickAddForm, retail_price: e.target.value })} placeholder="৳" />
+              </div>
+              <div className="space-y-2">
+                <Label>WS Price/ml</Label>
+                <Input type="number" min="0" step="any" value={quickAddForm.wholesale_price_per_ml} onChange={(e) => setQuickAddForm({ ...quickAddForm, wholesale_price_per_ml: e.target.value })} placeholder="৳/ml" />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+            <Button variant="gold" onClick={handleQuickAddProduct} disabled={quickSaving}>
+              {quickSaving ? "Adding..." : "Add Product"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Quick Price Edit Dialog */}
+      <Dialog open={showPriceEdit} onOpenChange={setShowPriceEdit}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Edit Price</DialogTitle>
+            <DialogDescription>
+              {priceEditIdx !== null && variants[priceEditIdx]
+                ? `Update price for ${variants[priceEditIdx].size_ml}ml variant`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Retail Price</Label>
+                <Input type="number" min="0" step="any" value={priceEditForm.retail_price} onChange={(e) => setPriceEditForm({ ...priceEditForm, retail_price: e.target.value })} placeholder="৳" />
+              </div>
+              <div className="space-y-2">
+                <Label>WS Price/ml</Label>
+                <Input type="number" min="0" step="any" value={priceEditForm.wholesale_price_per_ml} onChange={(e) => setPriceEditForm({ ...priceEditForm, wholesale_price_per_ml: e.target.value })} placeholder="৳/ml" />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+            <Button variant="gold" onClick={handleSaveQuickPrice}>
+              Save
             </Button>
           </DialogFooter>
         </DialogContent>

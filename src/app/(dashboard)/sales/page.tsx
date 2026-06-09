@@ -24,7 +24,7 @@ import { getPrintStyles } from "@/components/receipt/receipt-view";
 import { printReceipt } from "@/components/receipt/receipt-pdf";
 import type { Product, Variant, Customer, Sale, SaleItem, CartItem, BusinessSettings } from "@/lib/types";
 import {
-  Search, Plus, Trash2, Printer, Download, Eye, EyeOff, Barcode, XCircle, ShoppingCart, FileText, Pencil, Package,
+  Search, Plus, Trash2, Printer, Download, Eye, Barcode, XCircle, ShoppingCart, FileText,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import Link from "next/link";
@@ -70,15 +70,6 @@ export default function SalesPage() {
   const [settings, setSettings] = useState<BusinessSettings | null>(null);
   const [notes, setNotes] = useState("");
   const [cashierName, setCashierName] = useState("");
-
-  // Quick product management
-  const [showAddProduct, setShowAddProduct] = useState(false);
-  const [showEditPrice, setShowEditPrice] = useState(false);
-  const [variantToEdit, setVariantToEdit] = useState<Variant | null>(null);
-  const [showInactive, setShowInactive] = useState(false);
-  const [addProductForm, setAddProductForm] = useState({ name: "", size_ml: "50", retail_price: "", wholesale_price: "" });
-  const [quickSaving, setQuickSaving] = useState(false);
-  const [editPriceForm, setEditPriceForm] = useState({ retail_price: "", wholesale_price: "" });
 
   // Sale details
   const [selectedSale, setSelectedSale] = useState<SaleRow | null>(null);
@@ -621,113 +612,6 @@ export default function SalesPage() {
     loadData();
   };
 
-  const handleQuickAddProduct = async () => {
-    const name = addProductForm.name.trim();
-    const sizeMl = parseFloat(addProductForm.size_ml);
-    const retailPrice = parseFloat(addProductForm.retail_price) || 0;
-    const wholesalePrice = parseFloat(addProductForm.wholesale_price) || 0;
-
-    if (!name) { toast.error("Product name is required"); return; }
-    if (!sizeMl || sizeMl <= 0) { toast.error("Valid size (ml) is required"); return; }
-    if (!retailPrice && !wholesalePrice) { toast.error("Retail or wholesale price required"); return; }
-
-    setQuickSaving(true);
-    try {
-      const { data: newProduct, error: pe } = await supabase
-        .from("products")
-        .insert({ name, description: null, category: null, category_id: null, image_url: null, active: true })
-        .select()
-        .single();
-      if (pe || !newProduct) { toast.error("Failed to create product: " + (pe?.message || "Unknown")); setQuickSaving(false); return; }
-
-      const { data: newVariant, error: ve } = await supabase
-        .from("product_variants")
-        .insert({
-          product_id: newProduct.id,
-          size_ml: sizeMl,
-          concentration: "EDP",
-          price: retailPrice,
-          retail_price: retailPrice || null,
-          cost: 0, retail_cost: null,
-          wholesale_price_per_ml: wholesalePrice || null,
-          wholesale_cost_per_ml: null,
-          stock_ml: 0, stock_quantity: 0, bottle_stock_qty: 0,
-          low_stock_ml_threshold: 100, low_stock_threshold: 100, low_bottle_threshold: 10,
-          sku: null, barcode: null,
-          active: true, status: "active",
-        })
-        .select()
-        .single();
-      if (ve || !newVariant) { toast.error("Failed to create variant: " + (ve?.message || "Unknown")); setQuickSaving(false); return; }
-
-      toast.success(`"${name}" added`);
-      setShowAddProduct(false);
-      setAddProductForm({ name: "", size_ml: "50", retail_price: "", wholesale_price: "" });
-      await loadData();
-      addToCart(newVariant);
-      setSearchProduct("");
-      setShowProductPicker(false);
-    } catch (err) {
-      console.error("Quick add error:", err);
-      toast.error("An unexpected error occurred");
-    } finally {
-      setQuickSaving(false);
-    }
-  };
-
-  const openEditPrice = (variant: Variant) => {
-    setVariantToEdit(variant);
-    setEditPriceForm({
-      retail_price: String(variant.retail_price ?? variant.price ?? ""),
-      wholesale_price: String(variant.wholesale_price_per_ml ?? ""),
-    });
-    setShowEditPrice(true);
-  };
-
-  const handleSavePrice = async () => {
-    if (!variantToEdit) return;
-    const retailPrice = parseFloat(editPriceForm.retail_price);
-    const wholesalePrice = parseFloat(editPriceForm.wholesale_price);
-    if (!retailPrice && !wholesalePrice) { toast.error("Retail or wholesale price required"); return; }
-
-    setQuickSaving(true);
-    try {
-      const { error } = await supabase
-        .from("product_variants")
-        .update({
-          price: retailPrice || 0,
-          retail_price: retailPrice || null,
-          wholesale_price_per_ml: wholesalePrice || null,
-        })
-        .eq("id", variantToEdit.id);
-      if (error) { toast.error("Failed to update price: " + error.message); setQuickSaving(false); return; }
-      toast.success("Price updated");
-      setShowEditPrice(false);
-      setVariantToEdit(null);
-      loadData();
-    } catch (err) {
-      console.error("Edit price error:", err);
-      toast.error("An unexpected error occurred");
-    } finally {
-      setQuickSaving(false);
-    }
-  };
-
-  const handleReactivateVariant = async (variant: Variant) => {
-    try {
-      const { error } = await supabase
-        .from("product_variants")
-        .update({ active: true, status: "active" })
-        .eq("id", variant.id);
-      if (error) { toast.error("Failed to reactivate: " + error.message); return; }
-      toast.success("Variant reactivated");
-      loadData();
-    } catch (err) {
-      console.error("Reactivate error:", err);
-      toast.error("An unexpected error occurred");
-    }
-  };
-
   const filteredProducts = products.filter((p) =>
     p.name.toLowerCase().includes(searchProduct.toLowerCase()) ||
     p.product_variants?.some((v) =>
@@ -1058,21 +942,7 @@ export default function SalesPage() {
 
             {/* Product Search */}
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Search Products</Label>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground cursor-pointer"
-                    onClick={() => setShowInactive(!showInactive)}
-                  >
-                    {showInactive ? "Hide inactive" : "Show inactive"}
-                  </button>
-                  <Button variant="outline" size="sm" className="h-7 px-2" onClick={() => { setAddProductForm({ name: "", size_ml: "50", retail_price: "", wholesale_price: "" }); setShowAddProduct(true); }}>
-                    <Package className="h-3.5 w-3.5 mr-1" /> New
-                  </Button>
-                </div>
-              </div>
+              <Label>Search Products</Label>
               <Input
                 placeholder="Search by name, SKU, barcode..."
                 value={searchProduct}
@@ -1083,33 +953,21 @@ export default function SalesPage() {
                 <Card className="max-h-56 overflow-y-auto">
                   <CardContent className="p-2 space-y-1">
                     {filteredProducts.slice(0, 10).map((product) =>
-                      (product.active !== false ? (product.product_variants || []) : []).filter((v) => (v.active !== false || showInactive)).map((v) => {
+                      (product.active !== false ? (product.product_variants || []) : []).filter((v) => v.active !== false).map((v) => {
                         const price = saleType === "retail"
                           ? (v.retail_price ?? v.price ?? 0)
                           : (v.wholesale_price_per_ml ?? 0);
-                        const isInactive = v.active === false;
                         return (
-                          <div key={v.id} className={`flex items-center gap-1 rounded ${isInactive ? "opacity-50" : "hover:bg-muted"}`}>
-                            <button
-                              className="flex-1 text-left p-2 text-sm flex justify-between items-center"
-                              onClick={() => { if (!isInactive) { addToCart(v); setSearchProduct(""); setShowProductPicker(false); } }}
-                              disabled={isInactive}
-                            >
-                              <span>{product.name} - {v.size_ml}ml ({v.concentration}){isInactive ? " (inactive)" : ""}</span>
-                              <span className="text-gold font-medium">
-                                {saleType === "retail" ? formatCurrency(price) : `${formatCurrency(price)}/ml`}
-                              </span>
-                            </button>
-                            {isInactive ? (
-                              <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => handleReactivateVariant(v)} title="Reactivate">
-                                <EyeOff className="h-3.5 w-3.5 text-muted-foreground hover:text-green-600" />
-                              </Button>
-                            ) : (
-                              <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => openEditPrice(v)} title="Edit price">
-                                <Pencil className="h-3.5 w-3.5 text-muted-foreground hover:text-gold" />
-                              </Button>
-                            )}
-                          </div>
+                          <button
+                            key={v.id}
+                            className="w-full text-left p-2 text-sm flex justify-between items-center rounded hover:bg-muted"
+                            onClick={() => { addToCart(v); setSearchProduct(""); setShowProductPicker(false); }}
+                          >
+                            <span>{product.name} - {v.size_ml}ml ({v.concentration})</span>
+                            <span className="text-gold font-medium">
+                              {saleType === "retail" ? formatCurrency(price) : `${formatCurrency(price)}/ml`}
+                            </span>
+                          </button>
                         );
                       })
                     )}
@@ -1398,72 +1256,6 @@ export default function SalesPage() {
       </Dialog>
 
       <style>{getPrintStyles()}</style>
-
-      {/* Quick Add Product Dialog */}
-      <Dialog open={showAddProduct} onOpenChange={setShowAddProduct}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Quick Add Product</DialogTitle>
-            <DialogDescription>Add a new product and add it to the cart immediately.</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="space-y-2">
-              <Label>Product Name *</Label>
-              <Input value={addProductForm.name} onChange={(e) => setAddProductForm({ ...addProductForm, name: e.target.value })} placeholder="E.g. Rose Oud" />
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-2">
-                <Label>Size (ml) *</Label>
-                <Input type="number" min="1" value={addProductForm.size_ml} onChange={(e) => setAddProductForm({ ...addProductForm, size_ml: e.target.value })} />
-              </div>
-              <div className="space-y-2">
-                <Label>Retail Price</Label>
-                <Input type="number" min="0" step="any" value={addProductForm.retail_price} onChange={(e) => setAddProductForm({ ...addProductForm, retail_price: e.target.value })} placeholder="৳" />
-              </div>
-              <div className="space-y-2">
-                <Label>WS Price/ml</Label>
-                <Input type="number" min="0" step="any" value={addProductForm.wholesale_price} onChange={(e) => setAddProductForm({ ...addProductForm, wholesale_price: e.target.value })} placeholder="৳/ml" />
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-            <Button variant="gold" onClick={handleQuickAddProduct} disabled={quickSaving}>
-              {quickSaving ? "Adding..." : "Add & Add to Cart"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Price Dialog */}
-      <Dialog open={showEditPrice} onOpenChange={setShowEditPrice}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Edit Price</DialogTitle>
-            <DialogDescription>
-              {variantToEdit ? `Update price for ${variantToEdit.size_ml}ml variant` : ""}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Retail Price</Label>
-                <Input type="number" min="0" step="any" value={editPriceForm.retail_price} onChange={(e) => setEditPriceForm({ ...editPriceForm, retail_price: e.target.value })} placeholder="৳" />
-              </div>
-              <div className="space-y-2">
-                <Label>WS Price/ml</Label>
-                <Input type="number" min="0" step="any" value={editPriceForm.wholesale_price} onChange={(e) => setEditPriceForm({ ...editPriceForm, wholesale_price: e.target.value })} placeholder="৳/ml" />
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-            <Button variant="gold" onClick={handleSavePrice} disabled={quickSaving}>
-              {quickSaving ? "Saving..." : "Save"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
